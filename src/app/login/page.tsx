@@ -163,24 +163,25 @@ function LoginForm() {
       const userDoc = await getDoc(userDocRef);
       let role: UserRole = 'student';
       if (!userDoc.exists()) {
-         const newUser = {
+        const newUser = {
           name: user.displayName,
           email: user.email,
           role: "student", // Default role
           avatarUrl: user.photoURL,
           status: "Active",
         };
-        await setDoc(userDocRef, newUser).catch(e => {
-             if (e.code === 'permission-denied') {
-                const permissionError = new FirestorePermissionError({
-                  path: userDocRef.path,
-                  operation: 'create',
-                  requestResourceData: newUser
-                });
-                errorEmitter.emit('permission-error', permissionError);
-                // throw the error to prevent redirection
-                throw permissionError;
-            }
+        await setDoc(userDocRef, newUser).catch((e) => {
+          if (e.code === "permission-denied") {
+            const permissionError = new FirestorePermissionError({
+              path: userDocRef.path,
+              operation: "create",
+              requestResourceData: newUser,
+            });
+            errorEmitter.emit("permission-error", permissionError);
+            // throw the error to prevent redirection
+            throw permissionError;
+          }
+          throw e; // re-throw other errors
         });
       } else {
         role = userDoc.data().role as UserRole;
@@ -191,13 +192,13 @@ function LoginForm() {
         // This was already handled, just re-throwing to stop execution
         return;
       }
-       if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
             path: `users/${auth.currentUser?.uid}`,
             operation: 'get',
           });
-          errorEmitter.emit('permission-error', permissionError);
-      } else {
+        errorEmitter.emit('permission-error', permissionError);
+      } else if (error.code !== 'auth/popup-closed-by-user') { // Don't show toast if user closes popup
           toast({
             variant: "destructive",
             title: "Google Sign-In Failed",
@@ -463,3 +464,5 @@ function SignUpForm() {
     </Card>
   );
 }
+
+    
