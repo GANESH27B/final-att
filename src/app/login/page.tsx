@@ -35,7 +35,7 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path
       d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.05 1.05-2.86 2.25-5.02 2.25-4.34 0-7.88-3.57-7.88-7.95s3.54-7.95 7.88-7.95c2.47 0 3.96.98 4.86 1.86l2.6-2.58C18.14 1.3 15.48 0 12.48 0 5.88 0 .5 5.34.5 12s5.38 12 11.98 12c6.92 0 11.52-4.8 11.52-11.72 0-.78-.08-1.54-.2-2.36h-21.8z"
       fillRule="nonzero"
-      fill="#4285F4"
+      fill="currentColor"
     />
   </svg>
 );
@@ -52,26 +52,32 @@ export default function LoginPage() {
 
   if (loading || user) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
-      <Tabs defaultValue="login" className="w-full max-w-sm">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="login">Login</TabsTrigger>
-          <TabsTrigger value="signup">Sign Up</TabsTrigger>
-        </TabsList>
-        <TabsContent value="login">
-          <LoginForm />
-        </TabsContent>
-        <TabsContent value="signup">
-          <SignUpForm />
-        </TabsContent>
-      </Tabs>
+    <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <div className="flex justify-center items-center gap-2 mb-6">
+          <Shield className="h-10 w-10 text-primary" />
+          <h1 className="text-3xl font-bold font-headline text-foreground">AttendSync</h1>
+        </div>
+        <Tabs defaultValue="login" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="login">Login</TabsTrigger>
+            <TabsTrigger value="signup">Sign Up</TabsTrigger>
+          </TabsList>
+          <TabsContent value="login">
+            <LoginForm />
+          </TabsContent>
+          <TabsContent value="signup">
+            <SignUpForm />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
@@ -160,14 +166,11 @@ function LoginForm() {
   };
 
   return (
-    <Card>
+    <Card className="border-0 shadow-none sm:border sm:shadow-sm">
       <CardHeader className="text-center">
-        <div className="flex justify-center items-center gap-2 mb-2">
-          <Shield className="h-8 w-8 text-primary" />
-          <CardTitle className="text-2xl font-headline">AttendSync</CardTitle>
-        </div>
+        <CardTitle className="text-2xl">Welcome Back</CardTitle>
         <CardDescription>
-          Enter your credentials to access your account
+          Enter your credentials to access your account.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -178,7 +181,7 @@ function LoginForm() {
               <Input
                 id="email"
                 type="email"
-                placeholder="m@example.com"
+                placeholder="name@example.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -190,10 +193,10 @@ function LoginForm() {
                 <Button
                   type="button"
                   variant="link"
-                  className="ml-auto inline-block text-sm underline"
+                  className="ml-auto h-auto p-0 text-sm"
                   onClick={handleForgotPassword}
                 >
-                  Forgot your password?
+                  Forgot password?
                 </Button>
               </div>
               <Input 
@@ -208,13 +211,23 @@ function LoginForm() {
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Login
             </Button>
-            <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={googleLoading}>
+            <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                    Or continue with
+                    </span>
+                </div>
+            </div>
+            <Button variant="outline" className="w-full text-blue-500 hover:text-blue-600" onClick={handleGoogleSignIn} disabled={googleLoading}>
               {googleLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <GoogleIcon className="mr-2 h-4 w-4" />
               )}
-              Login with Google
+              Google
             </Button>
           </div>
         </form>
@@ -244,7 +257,6 @@ function SignUpForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Now, save user info to Firestore
       await setDoc(doc(firestore, "users", user.uid), {
         name,
         email,
@@ -271,11 +283,11 @@ function SignUpForm() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">Sign Up</CardTitle>
+    <Card className="border-0 shadow-none sm:border sm:shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">Create an account</CardTitle>
         <CardDescription>
-          Enter your information to create an account
+          Enter your information to get started.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -296,7 +308,7 @@ function SignUpForm() {
               <Input
                 id="email-signup"
                 type="email"
-                placeholder="m@example.com"
+                placeholder="name@example.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -307,35 +319,36 @@ function SignUpForm() {
               <Input 
                 id="password-signup" 
                 type="password" 
-                required 
+                required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             <div className="grid gap-2">
-              <Label>Role</Label>
+              <Label>I am a...</Label>
               <RadioGroup 
                 value={role}
                 onValueChange={(value: UserRole) => setRole(value)}
-                className="flex items-center space-x-4"
+                className="flex items-center space-x-4 pt-1"
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="admin" id="admin" />
-                  <Label htmlFor="admin">Admin</Label>
+                  <Label htmlFor="admin" className="font-normal">Admin</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="faculty" id="faculty" />
-                  <Label htmlFor="faculty">Faculty</Label>
+                  <Label htmlFor="faculty" className="font-normal">Faculty</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="student" id="student" />
-                  <Label htmlFor="student">Student</Label>
+                  <Label htmlFor="student" className="font-normal">Student</Label>
                 </div>
               </RadioGroup>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full mt-2" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create an account
+              Create Account
             </Button>
           </div>
         </form>
