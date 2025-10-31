@@ -2,7 +2,7 @@
 // Using client directive for form interactivity and hooks
 "use client";
 
-import { useFormState } from "react-dom";
+import { useActionState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -60,7 +60,7 @@ const visualizationOptions = [
 ] as const;
 
 export default function AnalyticsPage() {
-  const [state, formAction] = useFormState(handleGenerateReport, null);
+  const [state, formAction] = useActionState(handleGenerateReport, null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
