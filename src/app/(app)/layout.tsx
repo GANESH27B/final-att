@@ -5,25 +5,62 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { UserNav } from "@/components/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { useAuth, useUser } from "@/firebase";
+import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { UserRole } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useUser();
+  const { user, loading: userLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!userLoading && !user) {
       router.push("/login");
+      return;
     }
-  }, [user, loading, router]);
-  
-  if (loading || !user) {
+
+    if (user && firestore) {
+      const userDocRef = doc(firestore, "users", user.uid);
+      getDoc(userDocRef)
+        .then((docSnap) => {
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            const userRole = userData.role as UserRole;
+            setRole(userRole);
+            const currentPath = window.location.pathname;
+            const expectedPath = `/dashboard/${userRole}`;
+            if (currentPath !== expectedPath && userRole) {
+                // Redirect to the correct dashboard if not already there.
+                // This handles the case where a user logs in and is redirected to /dashboard
+                // which then needs to be redirected to their specific dashboard.
+                if(currentPath === '/dashboard' || !currentPath.startsWith('/dashboard/')){
+                   router.push(expectedPath);
+                }
+            }
+          } else {
+            // Handle case where user doc doesn't exist
+             router.push("/login");
+          }
+        })
+        .catch(() => {
+          // Handle error
+          router.push("/login");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else if (!userLoading) {
+        setLoading(false);
+    }
+  }, [user, userLoading, firestore, router]);
+
+  if (loading || userLoading || !user || !role) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>
@@ -31,18 +68,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // A mock role is determined by the URL, but in a real app this would be
-  // fetched from the user's profile in Firestore.
-  const isStudent = router.pathname?.startsWith('/dashboard/my-attendance');
-  const isFaculty = router.pathname?.startsWith('/dashboard/attendance');
-  
-  let activeRole: UserRole = 'admin';
-  if (isStudent) activeRole = 'student';
-  else if (isFaculty) activeRole = 'faculty';
-
   return (
     <SidebarProvider>
-      <SidebarNav role={activeRole} />
+      <SidebarNav role={role} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
           <div className="flex items-center gap-2 ml-auto">

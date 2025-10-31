@@ -43,12 +43,23 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 export default function LoginPage() {
   const { user, loading } = useUser();
   const router = useRouter();
+  const firestore = useFirestore();
 
   React.useEffect(() => {
-    if (user) {
-      router.push("/dashboard");
+    if (user && firestore) {
+      const userDocRef = doc(firestore, "users", user.uid);
+      getDoc(userDocRef).then((docSnap) => {
+        if (docSnap.exists()) {
+          const userData = docSnap.data();
+          const role = userData.role as UserRole;
+          router.push(`/dashboard/${role}`);
+        } else {
+          // Handle case where user is authenticated but has no user document
+          router.push('/login'); // Or a profile setup page
+        }
+      });
     }
-  }, [user, router]);
+  }, [user, firestore, router]);
 
   if (loading || user) {
     return (
@@ -97,8 +108,16 @@ function LoginForm() {
     if (!auth || !firestore) return;
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      const userDocRef = doc(firestore, "users", user.uid);
+      const docSnap = await getDoc(userDocRef);
+      if (docSnap.exists()) {
+        const role = docSnap.data().role as UserRole;
+        router.push(`/dashboard/${role}`);
+      } else {
+         router.push('/login');
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -119,6 +138,7 @@ function LoginForm() {
       const user = result.user;
       const userDocRef = doc(firestore, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
+      let role: UserRole = 'student';
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           name: user.displayName,
@@ -127,8 +147,10 @@ function LoginForm() {
           avatarUrl: user.photoURL,
           status: "Active",
         });
+      } else {
+        role = userDoc.data().role as UserRole;
       }
-      router.push("/dashboard");
+      router.push(`/dashboard/${role}`);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -270,7 +292,7 @@ function SignUpForm() {
         description: "You have been successfully signed up.",
       });
 
-      router.push("/dashboard");
+      router.push(`/dashboard/${role}`);
     } catch (error: any) {
       toast({
         variant: "destructive",
