@@ -20,10 +20,12 @@ import {
   LogOut,
   Shield,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserRole } from "@/lib/types";
 import { Separator } from "./ui/separator";
+import { useAuth } from "@/firebase";
+import { signOut } from "firebase/auth";
 
 interface SidebarNavProps {
   role: UserRole;
@@ -54,17 +56,25 @@ const navItems = {
 
 export function SidebarNav({ role = "admin" }: SidebarNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const auth = useAuth();
 
   // For demonstration, we'll allow switching roles. In a real app, this would be derived from session.
   const isStudent = pathname.startsWith('/dashboard/my-attendance');
   const isFaculty = pathname.startsWith('/dashboard/attendance');
   
-  let activeRole: UserRole = 'admin';
+  let activeRole: UserRole = role; // Use the passed role by default
   if (isStudent) activeRole = 'student';
   else if (isFaculty) activeRole = 'faculty';
 
 
   const items = navItems[activeRole] || navItems.admin;
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    await signOut(auth);
+    router.push('/login');
+  };
 
   return (
     <Sidebar>
@@ -95,7 +105,7 @@ export function SidebarNav({ role = "admin" }: SidebarNavProps) {
         <Separator className="my-2" />
          <SidebarMenu>
             <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Logout">
+                <SidebarMenuButton tooltip="Logout" onClick={handleLogout}>
                     <LogOut />
                     <span>Logout</span>
                 </SidebarMenuButton>

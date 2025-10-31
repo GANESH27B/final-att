@@ -1,3 +1,4 @@
+
 // Using client directive for form interactivity and hooks
 "use client";
 
@@ -147,7 +148,7 @@ export default function AnalyticsPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Select {analysisType}</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder={`Select a ${analysisType}...`} />
@@ -226,9 +227,9 @@ export default function AnalyticsPage() {
                                         checked={field.value?.includes(item.id)}
                                         onCheckedChange={(checked) => {
                                         return checked
-                                            ? field.onChange([...field.value, item.id])
+                                            ? field.onChange([...(field.value || []), item.id])
                                             : field.onChange(
-                                                field.value?.filter(
+                                                (field.value || [])?.filter(
                                                 (value) => value !== item.id
                                                 )
                                             )
