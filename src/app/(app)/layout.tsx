@@ -5,12 +5,12 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { UserNav } from "@/components/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { useUser } from "@/firebase";
+import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UserRole } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
-import { useFirestore } from "@/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
@@ -18,6 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const firestore = useFirestore();
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -48,9 +49,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              router.push("/login");
           }
         })
-        .catch(() => {
-          // Handle error
-          router.push("/login");
+        .catch((e) => {
+           if (e.code === 'permission-denied') {
+                const permissionError = new FirestorePermissionError({
+                  path: userDocRef.path,
+                  operation: 'get',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Could not fetch user data.",
+                });
+                router.push("/login");
+            }
         })
         .finally(() => {
           setLoading(false);
@@ -58,7 +71,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     } else if (!userLoading) {
         setLoading(false);
     }
-  }, [user, userLoading, firestore, router]);
+  }, [user, userLoading, firestore, router, toast]);
 
   if (loading || userLoading || !user || !role) {
     return (

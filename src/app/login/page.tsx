@@ -27,7 +27,7 @@ import { Shield, Loader2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useUser, useFirestore } from "@/firebase";
+import { useAuth, useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { UserRole } from "@/lib/types";
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -56,6 +56,20 @@ export default function LoginPage() {
         } else {
           // Handle case where user is authenticated but has no user document
           router.push('/login'); // Or a profile setup page
+        }
+      }).catch((e) => {
+        if (e.code === 'permission-denied') {
+            const permissionError = new FirestorePermissionError({
+              path: userDocRef.path,
+              operation: 'get',
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        } else {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: e.message,
+            });
         }
       });
     }
@@ -119,11 +133,19 @@ function LoginForm() {
          router.push('/login');
       }
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Login Failed",
-        description: error.message,
-      });
+       if (error.code === 'permission-denied') {
+            const permissionError = new FirestorePermissionError({
+              path: `users/${auth.currentUser?.uid}`,
+              operation: 'get',
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        } else {
+            toast({
+                variant: "destructive",
+                title: "Login Failed",
+                description: error.message,
+            });
+        }
     } finally {
       setLoading(false);
     }
@@ -140,23 +162,47 @@ function LoginForm() {
       const userDoc = await getDoc(userDocRef);
       let role: UserRole = 'student';
       if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
+         const newUser = {
           name: user.displayName,
           email: user.email,
           role: "student", // Default role
           avatarUrl: user.photoURL,
           status: "Active",
+        };
+        await setDoc(userDocRef, newUser).catch(e => {
+             if (e.code === 'permission-denied') {
+                const permissionError = new FirestorePermissionError({
+                  path: userDocRef.path,
+                  operation: 'create',
+                  requestResourceData: newUser
+                });
+                errorEmitter.emit('permission-error', permissionError);
+                // throw the error to prevent redirection
+                throw permissionError;
+            }
         });
       } else {
         role = userDoc.data().role as UserRole;
       }
       router.push(`/dashboard/${role}`);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Google Sign-In Failed",
-        description: error.message,
-      });
+      if (error instanceof FirestorePermissionError) {
+        // This was already handled, just re-throwing to stop execution
+        return;
+      }
+       if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: `users/${auth.currentUser?.uid}`,
+            operation: 'get',
+          });
+          errorEmitter.emit('permission-error', permissionError);
+      } else {
+          toast({
+            variant: "destructive",
+            title: "Google Sign-In Failed",
+            description: error.message,
+          });
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -279,13 +325,16 @@ function SignUpForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      await setDoc(doc(firestore, "users", user.uid), {
+      const userData = {
         name,
         email,
         role,
         avatarUrl: `https://picsum.photos/seed/${user.uid}/40/40`,
         status: "Active",
-      });
+      };
+
+      const userDocRef = doc(firestore, "users", user.uid);
+      await setDoc(userDocRef, userData);
       
       toast({
         title: "Account Created",
@@ -294,11 +343,27 @@ function SignUpForm() {
 
       router.push(`/dashboard/${role}`);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Sign Up Failed",
-        description: error.message,
-      });
+      if (error.code === 'permission-denied') {
+        const userDocRef = doc(firestore, "users", auth.currentUser!.uid);
+         const permissionError = new FirestorePermissionError({
+              path: userDocRef.path,
+              operation: 'create',
+              requestResourceData: {
+                name,
+                email,
+                role,
+                avatarUrl: `https://picsum.photos/seed/${auth.currentUser!.uid}/40/40`,
+                status: "Active",
+              }
+            });
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({
+            variant: "destructive",
+            title: "Sign Up Failed",
+            description: error.message,
+        });
+      }
     } finally {
       setLoading(false);
     }
