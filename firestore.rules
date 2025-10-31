@@ -56,6 +56,10 @@ service cloud.firestore {
     function isAdmin() {
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
+    
+    function isFaculty() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
+    }
 
     /**
      * @description Rules for the /roles_admin/{uid} collection.
@@ -67,27 +71,28 @@ service cloud.firestore {
     match /roles_admin/{uid} {
       allow get: if false;
       allow list: if false;
-      allow create: if isOwner(uid);
+      allow create: if isOwner(uid) && request.resource.data.role == 'admin';
       allow update: if false;
       allow delete: if false;
     }
 
     /**
-     * @description Rules for the /users/{facultyId} collection.
-     * @path /users/{facultyId}
-     * @allow (get, list) If the user is an admin.
-     * @allow (create, update, delete) If the user's ID matches the facultyId.
-     * @deny (create, update, delete) If the user's ID does not match the facultyId.
-     * @principle Enforces document ownership for writes.
+     * @description Rules for the /users/{userId} collection.
+     * @path /users/{userId}
+     * @allow (get) If the user is an admin or is the owner of the document.
+     * @allow (list) If the user is an admin.
+     * @allow (create) If the user's ID matches the userId.
+     * @allow (update, delete) If the user is the owner of the document.
+     * @principle Enforces document ownership for writes and reads.
      */
-    match /users/{facultyId} {
-      allow get: if isAdmin();
+    match /users/{userId} {
+      allow get: if isAdmin() || isOwner(userId);
       allow list: if isAdmin();
-      allow create: if isOwner(facultyId);
-      allow update: if isExistingOwner(facultyId);
-      allow delete: if isExistingOwner(facultyId);
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
-
+    
     /**
      * @description Rules for the /users/{facultyId}/classes/{classId} collection.
      * @path /users/{facultyId}/classes/{classId}
@@ -114,11 +119,11 @@ service cloud.firestore {
      * @principle Enforces document ownership for writes and validates relational integrity.
      */
     match /classes/{classId}/students/{studentId} {
-      allow get: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
-      allow list: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
-      allow create: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
-      allow update: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
-      allow delete: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
+      allow get: if isAdmin() || isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow list: if isAdmin() || isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow create: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
+      allow update: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
+      allow delete: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
     }
 
     /**
@@ -131,11 +136,11 @@ service cloud.firestore {
      * @principle Enforces document ownership for writes and validates relational integrity.
      */
     match /classes/{classId}/attendance/{attendanceId} {
-      allow get: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
-      allow list: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
-      allow create: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
-      allow update: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
-      allow delete: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
+      allow get: if isAdmin() || isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow list: if isAdmin() || isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow create: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
+      allow update: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
+      allow delete: if isFaculty() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
     }
   }
 }

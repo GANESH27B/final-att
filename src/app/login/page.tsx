@@ -44,6 +44,7 @@ export default function LoginPage() {
   const { user, loading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   React.useEffect(() => {
     if (user && firestore) {
@@ -73,7 +74,7 @@ export default function LoginPage() {
         }
       });
     }
-  }, [user, firestore, router]);
+  }, [user, firestore, router, toast]);
 
   if (loading || user) {
     return (
@@ -332,8 +333,14 @@ function SignUpForm() {
         avatarUrl: `https://picsum.photos/seed/${user.uid}/40/40`,
         status: "Active",
       };
-
+      
       const userDocRef = doc(firestore, "users", user.uid);
+
+      if (role === 'admin') {
+        const adminRoleRef = doc(firestore, 'roles_admin', user.uid);
+        await setDoc(adminRoleRef, { role: 'admin' });
+      }
+
       await setDoc(userDocRef, userData);
       
       toast({
@@ -344,19 +351,32 @@ function SignUpForm() {
       router.push(`/dashboard/${role}`);
     } catch (error: any) {
       if (error.code === 'permission-denied') {
-        const userDocRef = doc(firestore, "users", auth.currentUser!.uid);
-         const permissionError = new FirestorePermissionError({
-              path: userDocRef.path,
-              operation: 'create',
-              requestResourceData: {
-                name,
-                email,
-                role,
-                avatarUrl: `https://picsum.photos/seed/${auth.currentUser!.uid}/40/40`,
-                status: "Active",
-              }
-            });
+        const uid = auth.currentUser!.uid;
+        const userDocRef = doc(firestore, "users", uid);
+        const userData = {
+            name,
+            email,
+            role,
+            avatarUrl: `https://picsum.photos/seed/${uid}/40/40`,
+            status: "Active",
+        };
+        const permissionError = new FirestorePermissionError({
+            path: userDocRef.path,
+            operation: 'create',
+            requestResourceData: userData,
+        });
         errorEmitter.emit('permission-error', permissionError);
+
+        if (role === 'admin') {
+            const adminRoleRef = doc(firestore, 'roles_admin', uid);
+            const adminPermissionError = new FirestorePermissionError({
+                path: adminRoleRef.path,
+                operation: 'create',
+                requestResourceData: { role: 'admin' },
+            });
+            errorEmitter.emit('permission-error', adminPermissionError);
+        }
+
       } else {
         toast({
             variant: "destructive",
