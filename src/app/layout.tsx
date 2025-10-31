@@ -8,6 +8,7 @@ import { FirebaseClientProvider } from '@/firebase';
 export const metadata: Metadata = {
   title: 'AttendSync',
   description: 'Smart Attendance Management Web App',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
