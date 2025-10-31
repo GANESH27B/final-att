@@ -2,7 +2,7 @@
 // Using client directive for form interactivity and hooks
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -41,6 +41,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { mockClasses, mockUsers } from "@/lib/data";
 import { Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { useFormStatus } from "react-dom";
 
 const formSchema = z.object({
   analysisType: z.enum(["class", "student", "faculty"]),
@@ -59,8 +61,16 @@ const visualizationOptions = [
   { id: "line", label: "Line Graph" },
 ] as const;
 
+type ActionState = {
+  data: AttendanceInsightsOutput | null;
+  errors?: z.ZodIssue[];
+};
+
 export default function AnalyticsPage() {
-  const [state, formAction] = useActionState(handleGenerateReport, null);
+  const { toast } = useToast();
+  const [state, formAction, isPending] = useActionState(handleGenerateReport, {
+    data: null,
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -73,21 +83,34 @@ export default function AnalyticsPage() {
   });
 
   const analysisType = form.watch("analysisType");
+  
+  useEffect(() => {
+    if (state.errors) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please check the form for errors.",
+      });
+      state.errors.forEach((error) => {
+        form.setError(error.path[0] as keyof FormValues, {
+          message: error.message,
+        });
+      });
+    }
+  }, [state, form, toast]);
 
   async function handleGenerateReport(
-    _prevState: AttendanceInsightsOutput | null,
+    _prevState: ActionState,
     formData: FormData
-  ): Promise<AttendanceInsightsOutput | null> {
+  ): Promise<ActionState> {
     const data = Object.fromEntries(formData);
     const parsed = formSchema.safeParse({
-        ...data,
-        visualizationTypes: formData.getAll('visualizationTypes')
+      ...data,
+      visualizationTypes: formData.getAll('visualizationTypes')
     });
 
     if (!parsed.success) {
-      // This should ideally not happen with client-side validation, but as a fallback
-      console.error(parsed.error.flatten().fieldErrors);
-      return null;
+        return { data: null, errors: parsed.error.issues };
     }
 
     try {
@@ -97,10 +120,10 @@ export default function AnalyticsPage() {
         reportFormat: parsed.data.reportFormat,
         visualizationTypes: parsed.data.visualizationTypes as ('bar' | 'pie' | 'line')[],
       });
-      return result;
+      return { data: result };
     } catch (e) {
       console.error(e);
-      return null;
+      return { data: null };
     }
   }
 
@@ -125,7 +148,10 @@ export default function AnalyticsPage() {
                       <FormLabel>Analysis Type</FormLabel>
                       <Select onValueChange={(value) => {
                           field.onChange(value);
-                          form.resetField("targetId");
+                          form.reset({
+                              ...form.getValues(),
+                              targetId: ""
+                          });
                       }} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -252,12 +278,12 @@ export default function AnalyticsPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <SubmitButton />
+              <SubmitButton isPending={isPending} />
             </CardFooter>
           </form>
         </Form>
       </Card>
-      {state && (
+      {state.data && (
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bot /> Generated Insights</CardTitle>
@@ -266,19 +292,19 @@ export default function AnalyticsPage() {
             <CardContent className="space-y-4">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><FileText /> Report</h3>
-                    <a href={state.report} className="text-sm text-primary hover:underline">{`Download Report (${state.report.split('.').pop()?.toUpperCase()})`}</a>
+                    <a href={state.data.report} className="text-sm text-primary hover:underline">{`Download Report (${state.data.report.split('.').pop()?.toUpperCase()})`}</a>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><ImageIcon /> Visualizations</h3>
                     <div className="text-sm text-muted-foreground flex flex-col space-y-1 mt-2">
-                        {state.visualizations.map((vis, i) => <span key={i}>- {vis}</span>)}
+                        {state.data.visualizations.map((vis, i) => <span key={i}>- {vis}</span>)}
                     </div>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><Lightbulb /> Key Insights</h3>
-                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap font-code">{state.insights}</p>
+                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap font-code">{state.data.insights}</p>
                 </div>
             </CardContent>
         </Card>
@@ -287,13 +313,13 @@ export default function AnalyticsPage() {
   );
 }
 
-function SubmitButton() {
-    // zod/react-hook-form doesn't have a isSubmitting/pending state, so we'll just show the button as always active
-    // const { pending } = useFormStatus();
-    const pending = false;
+function SubmitButton({isPending}: {isPending: boolean}) {
+    const { pending } = useFormStatus();
     return (
-        <Button type="submit" disabled={pending}>
-            {pending ? <Loader2 className="animate-spin" /> : "Generate Report"}
+        <Button type="submit" disabled={pending || isPending}>
+            {(pending || isPending) ? <Loader2 className="animate-spin" /> : "Generate Report"}
         </Button>
     )
 }
+
+    
