@@ -18,7 +18,7 @@ export default function UserManagementPage() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <CardTitle>User Management</CardTitle>
             <CardDescription>
@@ -32,7 +32,7 @@ export default function UserManagementPage() {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="students">
-          <TabsList className="grid w-full grid-cols-2 md:w-1/3">
+          <TabsList className="grid w-full grid-cols-2 md:max-w-[320px]">
             <TabsTrigger value="students">Students</TabsTrigger>
             <TabsTrigger value="faculty">Faculty</TabsTrigger>
           </TabsList>

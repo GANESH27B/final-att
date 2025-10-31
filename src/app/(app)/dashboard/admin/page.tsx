@@ -28,7 +28,7 @@ const chartConfig = {
 export default function AdminDashboardPage() {
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Students</CardTitle>
@@ -74,7 +74,7 @@ export default function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
         <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Class Attendance Overview</CardTitle>
@@ -86,7 +86,7 @@ export default function AdminDashboardPage() {
              <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
                 <BarChart data={classAttendanceData} accessibilityLayer>
                    <CartesianGrid vertical={false} />
-                   <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} />
+                   <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 3)} />
                    <YAxis />
                    <Tooltip cursor={false} content={<ChartTooltipContent />} />
                    <Bar dataKey="attendance" radius={8} />
@@ -101,7 +101,7 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <LineChart data={overallAttendanceData} accessibilityLayer>
+                <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
                   <YAxis />

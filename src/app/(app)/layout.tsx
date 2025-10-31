@@ -1,6 +1,6 @@
 'use client';
 
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UserNav } from "@/components/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 import { UserRole } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { Shield } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading } = useUser();
@@ -19,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -85,9 +88,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <SidebarNav role={role} />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur-sm sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+           <div className="flex items-center gap-2 md:hidden">
+              <SidebarTrigger />
+              <Shield className="w-8 h-8 text-primary" />
+              <h1 className="text-xl font-semibold font-headline">AttendSync</h1>
+           </div>
           <div className="flex items-center gap-2 ml-auto">
-             <Badge variant="outline" className="flex items-center gap-2">
+             <Badge variant="outline" className="hidden sm:flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>

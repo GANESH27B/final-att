@@ -32,7 +32,7 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-4">
         <h1 className="text-2xl font-bold tracking-tight font-headline">My Attendance Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Overall Attendance</CardDescription>
@@ -78,7 +78,7 @@ export default function StudentDashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[180px]">Subject</TableHead>
+                  <TableHead className="w-[120px] sm:w-[180px]">Subject</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead className="text-right">Percentage</TableHead>
                 </TableRow>
@@ -86,7 +86,7 @@ export default function StudentDashboardPage() {
               <TableBody>
                 {mockStudentAttendance.map((subject) => (
                   <TableRow key={subject.subject}>
-                    <TableCell className="font-medium">{subject.subject}</TableCell>
+                    <TableCell className="font-medium truncate">{subject.subject}</TableCell>
                     <TableCell>
                       <Progress value={subject.percentage} className="h-2" />
                     </TableCell>
@@ -104,7 +104,7 @@ export default function StudentDashboardPage() {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <LineChart data={overallAttendanceData} accessibilityLayer>
+                <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
                   <YAxis domain={[70, 100]} />

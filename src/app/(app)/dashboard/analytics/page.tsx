@@ -1,4 +1,3 @@
-
 // Using client directive for form interactivity and hooks
 "use client";
 
@@ -234,7 +233,7 @@ export default function AnalyticsPage() {
                             Select the charts you want to include.
                             </FormDescription>
                         </div>
-                        <div className="flex items-center space-x-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 space-y-2 sm:space-y-0">
                         {visualizationOptions.map((item) => (
                             <FormField
                             key={item.id}
@@ -321,5 +320,3 @@ function SubmitButton({isPending}: {isPending: boolean}) {
         </Button>
     )
 }
-
-    

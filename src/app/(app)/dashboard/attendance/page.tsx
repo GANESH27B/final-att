@@ -76,14 +76,14 @@ export default function AttendancePage() {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
       <div className="lg:col-span-3 space-y-4">
         <Card>
             <CardHeader>
                 <CardTitle>Start Attendance Session</CardTitle>
                 <CardDescription>Select a class and start taking attendance.</CardDescription>
             </CardHeader>
-            <CardContent className="flex gap-2">
+            <CardContent className="flex flex-col sm:flex-row gap-2">
                 <Button onClick={() => setSessionActive(true)} disabled={sessionActive}><PlayCircle /> Start Session</Button>
                 <Button onClick={() => setSessionActive(false)} disabled={!sessionActive} variant="destructive"><StopCircle/> End Session</Button>
             </CardContent>
@@ -117,9 +117,9 @@ export default function AttendancePage() {
                     </AlertDescription>
                 </Alert>
             )}
-            <div className="mt-4 flex items-center gap-4">
+            <div className="mt-4 flex flex-col sm:flex-row items-center gap-4">
               <Input placeholder="Or enter registration number manually" disabled={!sessionActive} />
-              <Button disabled={!sessionActive}>Submit</Button>
+              <Button disabled={!sessionActive} className="w-full sm:w-auto">Submit</Button>
             </div>
           </CardContent>
         </Card>
@@ -136,12 +136,12 @@ export default function AttendancePage() {
           <CardContent>
             <div className="flex justify-between items-center mb-4 p-4 bg-secondary rounded-lg">
                 <div>
-                    <p className="text-sm text-muted-foreground">Total Students</p>
+                    <p className="text-sm text-muted-foreground">Total</p>
                     <p className="text-2xl font-bold">35</p>
                 </div>
                 <Separator orientation="vertical" className="h-12" />
                  <div>
-                    <p className="text-sm text-muted-foreground">Present Today</p>
+                    <p className="text-sm text-muted-foreground">Present</p>
                     <p className="text-2xl font-bold text-green-500">32</p>
                 </div>
                  <Separator orientation="vertical" className="h-12" />
@@ -155,7 +155,7 @@ export default function AttendancePage() {
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {mockAttendanceRecords.filter(r => r.status === 'Present').map((record) => (
                 <div key={record.id} className="flex items-center justify-between p-2 rounded-md border">
-                  <span className="font-medium">{record.studentName}</span>
+                  <span className="font-medium text-sm">{record.studentName}</span>
                   <Badge variant="secondary" className="flex items-center gap-1 text-green-600">
                     <CheckCircle className="h-3 w-3" />
                     Present
@@ -163,14 +163,14 @@ export default function AttendancePage() {
                 </div>
               ))}
                 <div className="flex items-center justify-between p-2 rounded-md border">
-                  <span className="font-medium">Michael Scott</span>
+                  <span className="font-medium text-sm">Michael Scott</span>
                    <Badge variant="secondary" className="flex items-center gap-1 text-green-600">
                     <CheckCircle className="h-3 w-3" />
                     Present
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between p-2 rounded-md border">
-                  <span className="font-medium">Dwight Schrute</span>
+                  <span className="font-medium text-sm">Dwight Schrute</span>
                    <Badge variant="secondary" className="flex items-center gap-1 text-green-600">
                     <CheckCircle className="h-3 w-3" />
                     Present

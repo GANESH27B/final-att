@@ -13,7 +13,7 @@ import { mockClasses } from "@/lib/data";
 export default function ClassManagementPage() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
             <h1 className="text-2xl font-bold tracking-tight font-headline">Class Management</h1>
             <p className="text-muted-foreground">Create and manage classes and sections.</p>
@@ -24,7 +24,7 @@ export default function ClassManagementPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {mockClasses.map((cls) => (
           <Card key={cls.id} className="flex flex-col">
             <CardHeader>
