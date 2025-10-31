@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -88,7 +89,7 @@ export function SidebarNav({ role = "admin" }: SidebarNavProps) {
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.label}>
-              <Link href={item.href} passHref legacyBehavior>
+              <Link href={item.href}>
                 <SidebarMenuButton
                   isActive={pathname === item.href}
                   tooltip={item.label}
