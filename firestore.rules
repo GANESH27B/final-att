@@ -1,0 +1,141 @@
+/**
+ * @file Firestore Security Rules
+ * @description This ruleset enforces a role-based access control model with ownership constraints, leveraging denormalization for authorization independence.
+ *
+ * Data Structure:
+ * - /roles_admin/{uid}: Documents representing admin users. Existence implies admin role.
+ * - /users/{facultyId}: Faculty member profiles, where {facultyId} is the Firebase Auth UID.
+ * - /users/{facultyId}/classes/{classId}: Classes owned by a faculty member.
+ * - /classes/{classId}/students/{studentId}: Students enrolled in a class. Includes denormalized `classId`.
+ * - /classes/{classId}/attendance/{attendanceId}: Attendance records for a class. Includes denormalized `classId` and `studentId`.
+ *
+ * Key Security Decisions:
+ * - Admin role is determined by the existence of a document in /roles_admin/{uid}.
+ * - Faculty can only manage classes under their own /users/{facultyId} path.
+ * - Students can only be added or managed within a class by authorized users (e.g., faculty).
+ * - Attendance records are managed within each class context.
+ * - List operations are restricted to enforce privacy and prevent unauthorized data access.
+ *
+ * Denormalization for Authorization:
+ * - The 'Student' and 'Attendance' entities denormalize 'classId' to allow direct authorization checks without hierarchical lookups.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Checks if the user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the authenticated user's UID matches the provided userId.
+     * @param {string} userId The user ID to compare against the authenticated user's UID.
+     * @return {boolean} True if the user is signed in and their UID matches the provided userId, false otherwise.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the authenticated user is an existing owner of the resource, ensuring both ownership and existence.
+     * @param {string} userId The user ID to compare against the resource owner's ID.
+     * @return {boolean} True if the user is the owner and the resource exists; false otherwise.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Checks if the user has the admin role by verifying the existence of a document in /roles_admin/{uid}.
+     * @return {boolean} True if the user is an admin, false otherwise.
+     */
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /**
+     * @description Rules for the /roles_admin/{uid} collection.
+     * @path /roles_admin/{uid}
+     * @allow (create) If the authenticated user's UID matches the document ID.
+     * @deny (create) If the authenticated user's UID does not match the document ID.
+     * @principle Enforces document ownership for writes.
+     */
+    match /roles_admin/{uid} {
+      allow get: if false;
+      allow list: if false;
+      allow create: if isOwner(uid);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rules for the /users/{facultyId} collection.
+     * @path /users/{facultyId}
+     * @allow (get, list) If the user is an admin.
+     * @allow (create, update, delete) If the user's ID matches the facultyId.
+     * @deny (create, update, delete) If the user's ID does not match the facultyId.
+     * @principle Enforces document ownership for writes.
+     */
+    match /users/{facultyId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(facultyId);
+      allow update: if isExistingOwner(facultyId);
+      allow delete: if isExistingOwner(facultyId);
+    }
+
+    /**
+     * @description Rules for the /users/{facultyId}/classes/{classId} collection.
+     * @path /users/{facultyId}/classes/{classId}
+     * @allow (get, list) If the user's ID matches the facultyId.
+     * @allow (create, update, delete) If the user's ID matches the facultyId.
+     * @deny (create, update, delete) If the user's ID does not match the facultyId.
+     * @principle Enforces document ownership for writes.
+     */
+    match /users/{facultyId}/classes/{classId} {
+      allow get: if isOwner(facultyId);
+      allow list: if isOwner(facultyId);
+      allow create: if isOwner(facultyId);
+      allow update: if isExistingOwner(facultyId);
+      allow delete: if isExistingOwner(facultyId);
+    }
+
+    /**
+     * @description Rules for the /classes/{classId}/students/{studentId} collection.
+     * @path /classes/{classId}/students/{studentId}
+     * @allow (get, list) If the user is an admin or if the user is a faculty member who owns the class.
+     * @allow (create) If the user is a faculty member who owns the class and request.resource.data.classId == classId.
+     * @allow (update, delete) If the user is a faculty member who owns the class and resource.data.classId == classId.
+     * @deny (create, update, delete) If the user is not a faculty member who owns the class or if resource.data.classId != classId.
+     * @principle Enforces document ownership for writes and validates relational integrity.
+     */
+    match /classes/{classId}/students/{studentId} {
+      allow get: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow list: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow create: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
+      allow update: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
+      allow delete: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
+    }
+
+    /**
+     * @description Rules for the /classes/{classId}/attendance/{attendanceId} collection.
+     * @path /classes/{classId}/attendance/{attendanceId}
+     * @allow (get, list) If the user is an admin or if the user is a faculty member who owns the class.
+     * @allow (create) If the user is a faculty member who owns the class and request.resource.data.classId == classId.
+     * @allow (update, delete) If the user is a faculty member who owns the class and resource.data.classId == classId.
+     * @deny (create, update, delete) If the user is not a faculty member who owns the class or if resource.data.classId != classId.
+     * @principle Enforces document ownership for writes and validates relational integrity.
+     */
+    match /classes/{classId}/attendance/{attendanceId} {
+      allow get: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow list: if isAdmin() || exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId));
+      allow create: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId;
+      allow update: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && request.resource.data.classId == classId && resource != null;
+      allow delete: if exists(/databases/$(database)/documents/users/$(request.auth.uid)/classes/$(classId)) && resource.data.classId == classId && resource != null;
+    }
+  }
+}
