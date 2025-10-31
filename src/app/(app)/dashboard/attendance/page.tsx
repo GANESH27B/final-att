@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -8,11 +10,71 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { QrCode, ScanLine, ListChecks, CheckCircle, PlayCircle, StopCircle } from "lucide-react";
+import { QrCode, ScanLine, ListChecks, CheckCircle, PlayCircle, StopCircle, AlertTriangle } from "lucide-react";
 import { mockAttendanceRecords } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
+import { useRef, useState, useEffect } from "react";
 
 export default function AttendancePage() {
+  const [sessionActive, setSessionActive] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (isCameraActive) {
+      const getCameraPermission = async () => {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Camera not supported by this browser.');
+          }
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setHasCameraPermission(true);
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (error: any) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          setIsCameraActive(false); // Turn off camera active state on error
+          if (error.name === "NotAllowedError") {
+             toast({
+              variant: 'destructive',
+              title: 'Camera Access Denied',
+              description: 'Please enable camera permissions in your browser settings.',
+            });
+          } else {
+             toast({
+              variant: 'destructive',
+              title: 'Camera Error',
+              description: error.message || 'Could not access the camera.',
+            });
+          }
+        }
+      };
+
+      getCameraPermission();
+
+      return () => {
+        // Cleanup function to stop video stream
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+      }
+    }
+  }, [isCameraActive, toast]);
+
+
+  const handleActivateCamera = () => {
+    setIsCameraActive(prev => !prev);
+  }
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
       <div className="lg:col-span-3 space-y-4">
@@ -22,8 +84,8 @@ export default function AttendancePage() {
                 <CardDescription>Select a class and start taking attendance.</CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
-                <Button><PlayCircle /> Start Session</Button>
-                <Button variant="destructive"><StopCircle/> End Session</Button>
+                <Button onClick={() => setSessionActive(true)} disabled={sessionActive}><PlayCircle /> Start Session</Button>
+                <Button onClick={() => setSessionActive(false)} disabled={!sessionActive} variant="destructive"><StopCircle/> End Session</Button>
             </CardContent>
         </Card>
         <Card>
@@ -34,14 +96,30 @@ export default function AttendancePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center">
-              <QrCode className="h-16 w-16 text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">Camera feed appears here</p>
-              <Button variant="secondary" className="mt-4">Activate Camera</Button>
+            <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
+                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                {!isCameraActive && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
+                        <QrCode className="h-16 w-16 text-muted-foreground" />
+                        <p className="mt-4 text-muted-foreground">Camera feed appears here</p>
+                    </div>
+                )}
             </div>
+            <Button variant="secondary" className="w-full mt-4" onClick={handleActivateCamera}>
+                {isCameraActive ? "Deactivate Camera" : "Activate Camera"}
+            </Button>
+            {isCameraActive && !hasCameraPermission && (
+                <Alert variant="destructive" className="mt-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Camera Access Required</AlertTitle>
+                    <AlertDescription>
+                        Please allow camera access in your browser to use this feature.
+                    </AlertDescription>
+                </Alert>
+            )}
             <div className="mt-4 flex items-center gap-4">
-              <Input placeholder="Or enter registration number manually" />
-              <Button>Submit</Button>
+              <Input placeholder="Or enter registration number manually" disabled={!sessionActive} />
+              <Button disabled={!sessionActive}>Submit</Button>
             </div>
           </CardContent>
         </Card>
