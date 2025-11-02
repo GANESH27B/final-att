@@ -43,18 +43,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
             
-            // New, more stable redirection logic
+            // More stable redirection logic to prevent loops
             const baseRolePath = `/dashboard/${userRole}`;
-            
-            // If the user is an admin, they can be anywhere in the dashboard.
-            // We only redirect them if they land on the base redirect page.
+            const isStudentOnMyAttendance = userRole === 'student' && pathname.startsWith('/dashboard/my-attendance');
+
+            // Admins can go anywhere in the dashboard. Only redirect if they land on the root dashboard page.
             if (userRole === 'admin' && pathname === '/dashboard') {
                 router.replace('/dashboard/admin');
             } 
-            // For other roles, if they are not on their designated dashboard page, redirect them.
-            // This also handles the case where they land on the base /dashboard page.
-            else if (userRole !== 'admin' && !pathname.startsWith('/dashboard/my-attendance') && pathname !== baseRolePath) {
-                router.replace(baseRolePath);
+            // Other roles should be on their specific dashboard page or allowed sub-pages.
+            else if (userRole !== 'admin' && pathname !== baseRolePath && !isStudentOnMyAttendance) {
+                 if (pathname !== '/dashboard') { // Avoid redirect loops from the base dashboard
+                    router.replace(baseRolePath);
+                 }
             }
 
           } else {
