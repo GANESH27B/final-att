@@ -19,7 +19,7 @@ import { useRef, useState, useEffect } from "react";
 
 export default function AttendancePage() {
   const [sessionActive, setSessionActive] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
@@ -40,19 +40,22 @@ export default function AttendancePage() {
       } catch (error: any) {
         console.error('Error accessing camera:', error);
         setHasCameraPermission(false);
-        setIsCameraActive(false); // Turn off camera active state on error
-        if (error.name === "NotAllowedError") {
+        // Don't automatically turn off the camera active state,
+        // so the user can see the error message and retry.
+        // setIsCameraActive(false); 
+
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
             toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera permissions in your browser settings.',
-          });
+              variant: 'destructive',
+              title: 'Camera Access Denied',
+              description: 'Please enable camera permissions in your browser settings.',
+            });
         } else {
             toast({
-            variant: 'destructive',
-            title: 'Camera Error',
-            description: error.message || 'Could not access the camera.',
-          });
+              variant: 'destructive',
+              title: 'Camera Error',
+              description: error.message || 'Could not access the camera.',
+            });
         }
       }
     };
@@ -74,6 +77,10 @@ export default function AttendancePage() {
 
 
   const handleActivateCamera = () => {
+    // When activating, reset permission state to show loading/feedback
+    if (!isCameraActive) {
+      setHasCameraPermission(null);
+    }
     setIsCameraActive(prev => !prev);
   }
 
@@ -110,12 +117,12 @@ export default function AttendancePage() {
             <Button variant="secondary" className="w-full mt-4" onClick={handleActivateCamera}>
                 {isCameraActive ? "Deactivate Camera" : "Activate Camera"}
             </Button>
-            {isCameraActive && !hasCameraPermission && (
+            {isCameraActive && hasCameraPermission === false && (
                 <Alert variant="destructive" className="mt-4">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Camera Access Required</AlertTitle>
+                    <AlertTitle>Camera Access Denied</AlertTitle>
                     <AlertDescription>
-                        Please allow camera access in your browser to use this feature.
+                        Please allow camera access in your browser settings to use this feature. You may need to refresh the page after granting permission.
                     </AlertDescription>
                 </Alert>
             )}
