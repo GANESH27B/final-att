@@ -16,73 +16,96 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect } from "react";
+import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
 
 export default function AttendancePage() {
   const [sessionActive, setSessionActive] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-  const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const { toast } = useToast();
 
+  const markAttendance = (studentId: string) => {
+    // This is where you would typically update Firestore.
+    // For now, we'll just show a toast and log it.
+    console.log(`Marking attendance for student: ${studentId}`);
+    toast({
+      title: "Attendance Marked",
+      description: `Student ${studentId} has been marked as present.`,
+    });
+    // Optional: play a success sound
+    // new Audio('/success-sound.mp3').play();
+  };
+
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    const getCameraPermission = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('Camera not supported by this browser.');
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
+    const startScanner = async () => {
+      if (sessionActive && hasCameraPermission) {
+        try {
+          const scanner = new Html5Qrcode('reader');
+          scannerRef.current = scanner;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error: any) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
-        // Don't automatically turn off the camera active state,
-        // so the user can see the error message and retry.
-        // setIsCameraActive(false); 
-
-        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-            toast({
-              variant: 'destructive',
-              title: 'Camera Access Denied',
-              description: 'Please enable camera permissions in your browser settings.',
-            });
-        } else {
-            toast({
-              variant: 'destructive',
-              title: 'Camera Error',
-              description: error.message || 'Could not access the camera.',
-            });
+          await scanner.start(
+            { facingMode: "environment" },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+            },
+            (decodedText, decodedResult) => {
+              // On successful scan
+              markAttendance(decodedText);
+              // Optionally stop the scanner after one successful scan
+              // scanner.stop();
+            },
+            (errorMessage) => {
+              // On error, we can ignore it to allow continuous scanning
+            }
+          );
+        } catch (err: any) {
+           console.error("Error starting scanner:", err);
+           if (err.name === "NotAllowedError") {
+             setHasCameraPermission(false);
+           }
         }
       }
     };
-
-    if (isCameraActive) {
-      getCameraPermission();
+    
+    if (sessionActive) {
+      startScanner();
+    } else {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
+        scannerRef.current = null;
+      }
     }
 
+    // Cleanup on component unmount or when session ends
     return () => {
-      // Cleanup function to stop video stream
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => console.error("Failed to stop scanner on cleanup:", err));
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-    }
-  }, [isCameraActive, toast]);
+    };
+  }, [sessionActive, hasCameraPermission, toast]);
 
+  // Request camera permission when session starts
+  useEffect(() => {
+     const requestPermission = async () => {
+        if(sessionActive) {
+            try {
+                await Html5Qrcode.getCameras();
+                setHasCameraPermission(true);
+            } catch (err) {
+                setHasCameraPermission(false);
+                toast({
+                    variant: 'destructive',
+                    title: 'Camera Permission Denied',
+                    description: 'Please enable camera permissions to start scanning.',
+                });
+            }
+        }
+     }
+     requestPermission();
+  }, [sessionActive, toast]);
 
-  const handleActivateCamera = () => {
-    // When activating, reset permission state to show loading/feedback
-    if (!isCameraActive) {
-      setHasCameraPermission(null);
-    }
-    setIsCameraActive(prev => !prev);
-  }
 
   return (
     <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
@@ -106,18 +129,16 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-                {!isCameraActive && (
+                <div id="reader" className="w-full h-full"></div>
+                {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
-                        <p className="mt-4 text-muted-foreground">Camera is off</p>
+                        <p className="mt-4 text-muted-foreground">Session not active</p>
                     </div>
                 )}
             </div>
-            <Button variant="secondary" className="w-full mt-4" onClick={handleActivateCamera}>
-                {isCameraActive ? "Deactivate Camera" : "Activate Camera"}
-            </Button>
-            {isCameraActive && hasCameraPermission === false && (
+
+            {sessionActive && hasCameraPermission === false && (
                 <Alert variant="destructive" className="mt-4">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Camera Access Denied</AlertTitle>
