@@ -25,47 +25,49 @@ export default function AttendancePage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    let stream: MediaStream | null = null;
+    const getCameraPermission = async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera not supported by this browser.');
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error: any) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        setIsCameraActive(false); // Turn off camera active state on error
+        if (error.name === "NotAllowedError") {
+            toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please enable camera permissions in your browser settings.',
+          });
+        } else {
+            toast({
+            variant: 'destructive',
+            title: 'Camera Error',
+            description: error.message || 'Could not access the camera.',
+          });
+        }
+      }
+    };
+
     if (isCameraActive) {
-      const getCameraPermission = async () => {
-        try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Camera not supported by this browser.');
-          }
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setHasCameraPermission(true);
-
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        } catch (error: any) {
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          setIsCameraActive(false); // Turn off camera active state on error
-          if (error.name === "NotAllowedError") {
-             toast({
-              variant: 'destructive',
-              title: 'Camera Access Denied',
-              description: 'Please enable camera permissions in your browser settings.',
-            });
-          } else {
-             toast({
-              variant: 'destructive',
-              title: 'Camera Error',
-              description: error.message || 'Could not access the camera.',
-            });
-          }
-        }
-      };
-
       getCameraPermission();
+    }
 
-      return () => {
-        // Cleanup function to stop video stream
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
-        }
+    return () => {
+      // Cleanup function to stop video stream
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     }
   }, [isCameraActive, toast]);
@@ -101,7 +103,7 @@ export default function AttendancePage() {
                 {!isCameraActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
-                        <p className="mt-4 text-muted-foreground">Camera feed appears here</p>
+                        <p className="mt-4 text-muted-foreground">Camera is off</p>
                     </div>
                 )}
             </div>
