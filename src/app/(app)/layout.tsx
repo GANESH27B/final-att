@@ -15,7 +15,7 @@ import { Shield } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading: userLoading } = useUser();
+  const { user, isUserLoading: userLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
   const [role, setRole] = useState<UserRole | null>(null);
@@ -24,12 +24,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (!userLoading && !user) {
+    if (userLoading) {
+        setLoading(true);
+        return; // Wait until Firebase auth state is resolved
+    }
+
+    if (!user) {
       router.push("/login");
+      setLoading(false);
       return;
     }
 
-    if (user && firestore) {
+    if (firestore) {
       const userDocRef = doc(firestore, "users", user.uid);
       getDoc(userDocRef)
         .then((docSnap) => {
@@ -40,15 +46,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const currentPath = window.location.pathname;
             const expectedPath = `/dashboard/${userRole}`;
             if (currentPath !== expectedPath && userRole) {
-                // Redirect to the correct dashboard if not already there.
-                // This handles the case where a user logs in and is redirected to /dashboard
-                // which then needs to be redirected to their specific dashboard.
                 if(currentPath === '/dashboard' || !currentPath.startsWith('/dashboard/')){
                    router.push(expectedPath);
                 }
             }
           } else {
-            // Handle case where user doc doesn't exist
              router.push("/login");
           }
         })
@@ -71,12 +73,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .finally(() => {
           setLoading(false);
         });
-    } else if (!userLoading) {
-        setLoading(false);
     }
   }, [user, userLoading, firestore, router, toast]);
 
-  if (loading || userLoading || !user || !role) {
+  if (loading || !user || !role) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>
