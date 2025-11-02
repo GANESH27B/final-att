@@ -14,6 +14,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EditUserDialog } from "./edit-user-dialog";
+import { DeleteUserDialog } from "./delete-user-dialog";
+import { useState } from "react";
 
 export const columns: ColumnDef<User>[] = [
   {
@@ -56,9 +59,14 @@ export const columns: ColumnDef<User>[] = [
   {
     id: "actions",
     cell: ({ row }) => {
-      const user = row.original
+      const user = row.original;
+      const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+      const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
  
       return (
+        <>
+        <EditUserDialog user={user} open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
+        <DeleteUserDialog user={user} open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-8 w-8 p-0">
@@ -74,10 +82,11 @@ export const columns: ColumnDef<User>[] = [
               Copy user ID
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Edit user</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive">Delete user</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsEditDialogOpen(true)}>Edit user</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete user</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </>
       )
     },
   },
