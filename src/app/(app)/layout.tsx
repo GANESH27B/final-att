@@ -45,7 +45,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             
             // Redirect if the user is on a path that doesn't match their role.
             const currentRolePath = `/dashboard/${userRole}`;
-            if (userRole && !pathname.startsWith(currentRolePath)) {
+            if (userRole && pathname !== currentRolePath) {
                 // Allow admins to access any dashboard page
                 if (userRole === 'admin') {
                     // If admin is at base dashboard, send to admin dashboard
