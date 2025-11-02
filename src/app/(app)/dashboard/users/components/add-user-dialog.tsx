@@ -29,6 +29,7 @@ export function AddUserDialog() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
   const [role, setRole] = useState<UserRole>("student");
   const [loading, setLoading] = useState(false);
 
@@ -53,6 +54,7 @@ export function AddUserDialog() {
         name,
         email,
         role,
+        registrationNumber: registrationNumber || null,
         avatarUrl: `https://picsum.photos/seed/${user.uid}/40/40`,
         status: "Active",
       };
@@ -78,6 +80,7 @@ export function AddUserDialog() {
       setName("");
       setEmail("");
       setPassword("");
+      setRegistrationNumber("");
       setRole("student");
       setOpen(false);
 
@@ -91,7 +94,7 @@ export function AddUserDialog() {
         const permissionError = new FirestorePermissionError({
             path: userDocRef.path,
             operation: 'create',
-            requestResourceData: { name, email, role },
+            requestResourceData: { name, email, role, registrationNumber },
         });
         errorEmitter.emit('permission-error', permissionError);
       } else {
@@ -131,6 +134,10 @@ export function AddUserDialog() {
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="email" className="text-right">Email</Label>
               <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="col-span-3" required />
+            </div>
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="registrationNumber" className="text-right">Reg. Number</Label>
+              <Input id="registrationNumber" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} className="col-span-3" placeholder="Optional" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="password" className="text-right">Password</Label>

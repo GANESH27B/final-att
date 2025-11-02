@@ -31,6 +31,7 @@ export const columns: ColumnDef<User>[] = [
                 <div className="flex flex-col">
                     <span className="font-medium">{user.name}</span>
                     <span className="text-sm text-muted-foreground">{user.email}</span>
+                    {user.registrationNumber && <span className="text-xs text-muted-foreground">Reg: {user.registrationNumber}</span>}
                 </div>
             </div>
         )

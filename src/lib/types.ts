@@ -7,6 +7,7 @@ export type User = {
   role: UserRole;
   avatarUrl: string;
   status: "Active" | "Inactive";
+  registrationNumber?: string;
 };
 
 export type Class = {
