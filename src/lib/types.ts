@@ -8,12 +8,13 @@ export type User = {
   avatarUrl: string;
   status: "Active" | "Inactive";
   registrationNumber?: string;
+  classId?: string;
 };
 
 export type Class = {
   id: string;
   name: string;
-  faculty: string;
+  facultyId: string;
   studentCount: number;
   section: string;
 };
