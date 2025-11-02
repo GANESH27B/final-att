@@ -43,21 +43,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
             
-            // Redirect if the user is on a path that doesn't match their role.
-            const currentRolePath = `/dashboard/${userRole}`;
-            if (userRole && pathname !== currentRolePath) {
-                // Allow admins to access any dashboard page
-                if (userRole === 'admin') {
-                    // If admin is at base dashboard, send to admin dashboard
-                    if (pathname === '/dashboard') {
-                        router.replace('/dashboard/admin');
-                    }
-                    // Otherwise, let them be.
-                } else if (pathname !== '/dashboard') { // Don't redirect from the base redirecting page
-                    router.replace(currentRolePath);
-                }
-            } else if (userRole && pathname === '/dashboard') {
-                router.replace(currentRolePath);
+            // New, more stable redirection logic
+            const baseRolePath = `/dashboard/${userRole}`;
+            
+            // If the user is an admin, they can be anywhere in the dashboard.
+            // We only redirect them if they land on the base redirect page.
+            if (userRole === 'admin' && pathname === '/dashboard') {
+                router.replace('/dashboard/admin');
+            } 
+            // For other roles, if they are not on their designated dashboard page, redirect them.
+            // This also handles the case where they land on the base /dashboard page.
+            else if (userRole !== 'admin' && !pathname.startsWith('/dashboard/my-attendance') && pathname !== baseRolePath) {
+                router.replace(baseRolePath);
             }
 
           } else {
