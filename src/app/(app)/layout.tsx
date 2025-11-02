@@ -6,22 +6,21 @@ import { UserNav } from "@/components/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UserRole } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Shield } from "lucide-react";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading: userLoading } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const firestore = useFirestore();
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (userLoading) {
@@ -43,14 +42,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userData = docSnap.data();
             const userRole = userData.role as UserRole;
             setRole(userRole);
-            const currentPath = window.location.pathname;
-            const expectedPath = `/dashboard/${userRole}`;
-            if (currentPath !== expectedPath && userRole) {
-                if(currentPath === '/dashboard' || !currentPath.startsWith('/dashboard/')){
-                   router.push(expectedPath);
-                }
+            
+            // Only redirect if the user is on the root dashboard page
+            // or a path that doesn't belong to their role.
+            if (userRole && pathname === '/dashboard') {
+               router.replace(`/dashboard/${userRole}`);
             }
+
           } else {
+             // If user is authenticated but has no firestore doc, send to login
              router.push("/login");
           }
         })
@@ -74,7 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           setLoading(false);
         });
     }
-  }, [user, userLoading, firestore, router, toast]);
+  }, [user, userLoading, firestore, router, toast, pathname]);
 
   if (loading || !user || !role) {
     return (
