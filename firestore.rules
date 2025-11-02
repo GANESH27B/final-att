@@ -88,9 +88,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isAdmin() || isOwner(userId);
       allow list: if isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isAdmin() || isExistingOwner(userId);
+      allow delete: if isAdmin() || isExistingOwner(userId);
     }
     
     /**
