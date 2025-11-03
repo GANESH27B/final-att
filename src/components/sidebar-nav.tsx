@@ -20,6 +20,7 @@ import {
   BadgeInfo,
   LogOut,
   Shield,
+  User,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -50,10 +51,14 @@ const studentNav = [
     { href: "/dashboard/my-attendance", icon: BarChart2, label: "My Attendance" },
 ];
 
+const commonNav = [
+    { href: "/dashboard/profile", icon: User, label: "Profile" },
+];
+
 const navItems = {
-  admin: adminNav,
-  faculty: facultyNav,
-  student: studentNav,
+  admin: [...adminNav, ...commonNav],
+  faculty: [...facultyNav, ...commonNav],
+  student: [...studentNav, ...commonNav],
 };
 
 export function SidebarNav({ role = "admin" }: SidebarNavProps) {
