@@ -1,3 +1,4 @@
+
 /**
  * @file Firestore Security Rules
  * @description This ruleset enforces a role-based access control model with ownership constraints, leveraging denormalization for authorization independence.
@@ -69,8 +70,8 @@ service cloud.firestore {
     // Admins can manage all users. Users can read/update their own profile.
     match /users/{userId} {
       allow get: if isAdmin() || isOwner(userId);
-      // Allow faculty/admins to list students for enrollment purposes
-      allow list: if isAdmin() || (isFaculty() && request.query.resource.data.role == 'student');
+      // Allow faculty/admins to list students or other faculty for enrollment purposes
+      allow list: if isAdmin() || (isSignedIn() && (request.query.resource.data.role == 'student' || request.query.resource.data.role == 'faculty'));
       allow create: if isAdmin(); // Only admins can create users via the UI.
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();

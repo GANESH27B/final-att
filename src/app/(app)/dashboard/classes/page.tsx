@@ -28,13 +28,15 @@ export default function ClassManagementPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
   
-  // Use a targeted collection query instead of a collectionGroup query
   const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
   const { data: allFetchedClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
 
   const usersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserType>(usersCollection);
   
+  const facultyQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, [firestore]);
+  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
+
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
@@ -94,9 +96,8 @@ export default function ClassManagementPage() {
     };
     processClasses();
   }, [classes, users, isLoadingClasses, isLoadingUsers, fetchStudentCounts]);
-
-
-  const faculty = users?.filter((user) => user.role === 'faculty') || [];
+  
+  const finalIsLoading = isLoading || isLoadingClasses || isLoadingUsers || isLoadingFaculty;
   
   return (
     <div className="space-y-4">
@@ -109,10 +110,10 @@ export default function ClassManagementPage() {
             Create and manage classes and sections.
           </p>
         </div>
-        <AddClassDialog faculty={faculty} />
+        <AddClassDialog faculty={faculty || []} />
       </div>
 
-      {isLoading ? (
+      {finalIsLoading ? (
          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
                 <Card key={i}>
