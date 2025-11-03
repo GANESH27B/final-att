@@ -90,8 +90,7 @@ service cloud.firestore {
 
     // Rules for the root /classes collection
     match /classes/{classId} {
-        // Read: Admins or the owning faculty can read a class doc.
-        // Students can read if they are enrolled (checked via subcollection existence).
+        // Read: Admins, the owning faculty, or an enrolled student can read a class doc.
         allow get: if isAdmin() || isClassOwner(classId) || exists(/databases/$(database)/documents/classes/$(classId)/students/$(request.auth.uid));
         
         // List: Only Admins and Faculty can list classes. 
