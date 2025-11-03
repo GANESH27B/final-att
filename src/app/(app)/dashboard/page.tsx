@@ -7,8 +7,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
-export default function DashboardPage() {
-  const { user, loading } = useUser();
+export default function DashboardRedirector() {
+  const { user, isUserLoading: loading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -16,7 +16,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.push('/login');
+      router.replace('/login');
       return;
     }
     if (user && firestore) {
@@ -27,9 +27,14 @@ export default function DashboardPage() {
           const role = userData.role as UserRole;
           router.replace(`/dashboard/${role}`);
         } else {
-          // This case should ideally be handled by the layout or login page
-          // but as a fallback, we redirect to login.
-          router.push('/login');
+          // If user is authenticated but has no firestore doc, send to login to re-auth
+          // which might create the user doc.
+          toast({
+            variant: 'destructive',
+            title: 'User data not found',
+            description: 'Please log in again.',
+          });
+          router.replace('/login');
         }
       }).catch(e => {
         if (e.code === 'permission-denied') {
@@ -41,10 +46,10 @@ export default function DashboardPage() {
         } else {
             toast({
                 variant: "destructive",
-                title: "Error",
+                title: "Error fetching user role",
                 description: e.message,
             });
-            router.push('/login');
+            router.replace('/login');
         }
       });
     }
