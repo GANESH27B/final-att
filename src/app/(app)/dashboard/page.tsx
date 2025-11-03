@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
-import { UserRole } from '@/lib/types';
+import { UserRole, User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -13,64 +13,76 @@ export default function DashboardRedirector() {
   const router = useRouter();
   const firestore = useFirestore();
   const { toast } = useToast();
+  const [userData, setUserData] = useState<User | null>(null);
+  const [isUserDataLoading, setIsUserDataLoading] = useState(true);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading) return; // Wait for Firebase Auth to be ready
     if (!user) {
       router.replace('/login');
       return;
     }
-    if (user && firestore) {
+
+    if (firestore && user && !userData) {
       const userDocRef = doc(firestore, 'users', user.uid);
-      getDoc(userDocRef).then((docSnap) => {
-        if (docSnap.exists()) {
-          const userData = docSnap.data();
-          const role = userData.role as UserRole;
-          // Redirect to the role-specific dashboard.
-          if (role === 'admin') {
-            router.replace('/dashboard/admin');
-          } else if (role === 'faculty') {
-            router.replace('/dashboard/faculty');
-          } else if (role === 'student') {
-            router.replace('/dashboard/student');
+      getDoc(userDocRef)
+        .then((docSnap) => {
+          if (docSnap.exists()) {
+            setUserData({ id: docSnap.id, ...docSnap.data() } as User);
           } else {
-             toast({
-                variant: 'destructive',
-                title: 'Unknown user role',
-                description: 'Could not determine your dashboard.',
-             });
-             router.replace('/login');
+            toast({
+              variant: 'destructive',
+              title: 'User data not found',
+              description: 'Please log in again.',
+            });
+            router.replace('/login');
           }
-        } else {
-          toast({
-            variant: 'destructive',
-            title: 'User data not found',
-            description: 'Please log in again.',
-          });
-          router.replace('/login');
-        }
-      }).catch(e => {
-        if (e.code === 'permission-denied') {
+        })
+        .catch((e) => {
+          if (e.code === 'permission-denied') {
             const permissionError = new FirestorePermissionError({
               path: userDocRef.path,
               operation: 'get',
             });
             errorEmitter.emit('permission-error', permissionError);
-        } else {
+          } else {
             toast({
-                variant: "destructive",
-                title: "Error fetching user role",
-                description: e.message,
+              variant: 'destructive',
+              title: 'Error fetching user role',
+              description: e.message,
             });
             router.replace('/login');
-        }
-      });
+          }
+        })
+        .finally(() => {
+          setIsUserDataLoading(false);
+        });
     }
-  }, [user, loading, firestore, router, toast]);
+  }, [user, loading, firestore, router, toast, userData]);
+
+  useEffect(() => {
+    if (userData) {
+      const role = userData.role as UserRole;
+      if (role === 'admin') {
+        router.replace('/dashboard/admin');
+      } else if (role === 'faculty') {
+        router.replace('/dashboard/faculty');
+      } else if (role === 'student') {
+        router.replace('/dashboard/student');
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Unknown user role',
+          description: 'Could not determine your dashboard.',
+        });
+        router.replace('/login');
+      }
+    }
+  }, [userData, router, toast]);
 
   return (
     <div className="flex h-screen items-center justify-center">
-       <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-2">
         <Loader2 className="h-8 w-8 animate-spin" />
         <p className="text-muted-foreground">Loading your dashboard...</p>
       </div>
