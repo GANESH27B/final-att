@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PlusCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useFirestore, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { User } from "@/lib/types";
 import { useState } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -30,10 +30,9 @@ interface AddClassDialogProps {
 }
 
 export function AddClassDialog({ faculty }: AddClassDialogProps) {
-  const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user } = useUser();
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -54,45 +53,47 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
     setLoading(true);
 
     const selectedFacultyId = facultyId || user.uid;
+    const classData = {
+      name,
+      section,
+      facultyId: selectedFacultyId,
+      createdAt: serverTimestamp(),
+    };
+
     const classCollectionRef = collection(firestore, 'users', selectedFacultyId, 'classes');
 
-    try {
-      await addDoc(classCollectionRef, {
-        name,
-        section,
-        facultyId: selectedFacultyId,
-        createdAt: serverTimestamp(),
-      });
-      
-      toast({
-        title: "Class Created",
-        description: `${name} - Section ${section} has been successfully created.`,
-      });
-
-      // Reset form and close dialog
-      setName("");
-      setSection("");
-      setFacultyId("");
-      setOpen(false);
-
-    } catch (error: any) {
-      if (error.code === 'permission-denied') {
-        const permissionError = new FirestorePermissionError({
-            path: classCollectionRef.path,
-            operation: 'create',
-            requestResourceData: { name, section, facultyId: selectedFacultyId },
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      } else {
+    addDoc(classCollectionRef, classData)
+      .then(() => {
         toast({
-            variant: "destructive",
-            title: "Failed to Create Class",
-            description: error.message,
+          title: "Class Created",
+          description: `${name} - Section ${section} has been successfully created.`,
         });
-      }
-    } finally {
-      setLoading(false);
-    }
+
+        // Reset form and close dialog
+        setName("");
+        setSection("");
+        setFacultyId("");
+        setOpen(false);
+      })
+      .catch((error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+              path: classCollectionRef.path,
+              operation: 'create',
+              requestResourceData: classData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({
+              variant: "destructive",
+              title: "Failed to Create Class",
+              description: error.message,
+          });
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
 
@@ -125,7 +126,7 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
                 <Label htmlFor="faculty" className="text-right">Faculty</Label>
                 <Select value={facultyId} onValueChange={setFacultyId}>
                     <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a faculty member" />
+                        <SelectValue placeholder="Select a faculty member (defaults to you)" />
                     </SelectTrigger>
                     <SelectContent>
                         {faculty.map(f => (
