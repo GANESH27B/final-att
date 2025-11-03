@@ -18,9 +18,9 @@ import { Progress } from "@/components/ui/progress";
 import { LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, doc, getDoc } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 import { AttendanceRecord, Class, User } from "@/lib/types";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 
@@ -35,45 +35,30 @@ export default function StudentDashboardPage() {
   const firestore = useFirestore();
   const { user } = useUser();
 
-  const [classMap, setClassMap] = useState<Map<string, Class>>(new Map());
-  const [isLoadingClasses, setIsLoadingClasses] = useState(true);
-
-  // 1. Get all attendance records for the current student
   const studentAttendanceQuery = useMemoFirebase(() => 
     firestore && user ? collection(firestore, `users/${user.uid}/attendance`) : null,
     [firestore, user]
   );
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
-  // 2. When attendance records are loaded, fetch the associated class documents
-  useEffect(() => {
-    if (!firestore || !attendanceRecords) return;
+  const enrolledClassIds = useMemo(() => {
+    if (!attendanceRecords) return [];
+    return [...new Set(attendanceRecords.map(r => r.classId))];
+  }, [attendanceRecords]);
+  
+  const classesQuery = useMemoFirebase(() => {
+    if (!firestore || enrolledClassIds.length === 0) return null;
+    return query(collection(firestore, 'classes'), where('id', 'in', enrolledClassIds));
+  }, [firestore, enrolledClassIds]);
 
-    const fetchClassData = async () => {
-      setIsLoadingClasses(true);
-      const newClassMap = new Map<string, Class>();
-      const classIds = [...new Set(attendanceRecords.map(r => r.classId))];
-      
-      for (const classId of classIds) {
-        if (!classMap.has(classId)) { // Avoid re-fetching
-          const classDocRef = doc(firestore, 'classes', classId);
-          const classSnap = await getDoc(classDocRef);
-          if (classSnap.exists()) {
-            newClassMap.set(classId, { id: classSnap.id, ...classSnap.data() } as Class);
-          }
-        } else {
-            newClassMap.set(classId, classMap.get(classId)!);
-        }
-      }
-      setClassMap(prev => new Map([...Array.from(prev.entries()), ...Array.from(newClassMap.entries())]));
-      setIsLoadingClasses(false);
-    };
+  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
 
-    fetchClassData();
-  }, [attendanceRecords, firestore, classMap]);
+  const isLoading = isLoadingAttendance || (enrolledClassIds.length > 0 && isLoadingClasses);
 
-
-  const isLoading = isLoadingAttendance || isLoadingClasses;
+  const classMap = useMemo(() => {
+    if (!enrolledClasses) return new Map<string, Class>();
+    return new Map(enrolledClasses.map(c => [c.id, c]));
+  }, [enrolledClasses]);
 
 
   const subjectWiseAttendance = useMemo(() => {

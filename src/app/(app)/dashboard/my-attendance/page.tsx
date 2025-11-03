@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress";
 import { LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 import { AttendanceRecord, Class } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,52 +41,54 @@ export default function MyAttendancePage() {
   );
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
-  const classesQuery = useMemoFirebase(() => 
-    firestore ? collection(firestore, 'classes') : null,
-    [firestore]
-  );
-  const { data: allClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+  const enrolledClassIds = useMemo(() => {
+    if (!attendanceRecords) return [];
+    return [...new Set(attendanceRecords.map(r => r.classId))];
+  }, [attendanceRecords]);
+  
+  const classesQuery = useMemoFirebase(() => {
+    if (!firestore || enrolledClassIds.length === 0) return null;
+    // Firestore 'in' queries are limited to 30 elements.
+    // For a student enrolled in more, we'd need multiple queries.
+    // This is a simplification for now.
+    return query(collection(firestore, 'classes'), where('id', 'in', enrolledClassIds.slice(0, 30)));
+  }, [firestore, enrolledClassIds]);
 
-  const isLoading = isLoadingAttendance || isLoadingClasses;
+  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+
+  const isLoading = isLoadingAttendance || (enrolledClassIds.length > 0 && isLoadingClasses);
 
   const classMap = useMemo(() => {
-    if (!allClasses) return new Map<string, Class>();
-    return new Map(allClasses.map(c => [c.id, c]));
-  }, [allClasses]);
+    if (!enrolledClasses) return new Map<string, Class>();
+    return new Map(enrolledClasses.map(c => [c.id, c]));
+  }, [enrolledClasses]);
 
   const subjectWiseAttendance = useMemo(() => {
     if (!attendanceRecords || !classMap.size) return [];
 
     const statsByClass: { [classId: string]: { attended: number, total: number } } = {};
-
-    // Assuming a simple model where each record is a class session
     const uniqueDatesByClass: { [classId: string]: Set<string> } = {};
 
     attendanceRecords.forEach(record => {
-      if (!uniqueDatesByClass[record.classId]) {
-        uniqueDatesByClass[record.classId] = new Set();
-      }
+      // Initialize if not present
+      if (!uniqueDatesByClass[record.classId]) uniqueDatesByClass[record.classId] = new Set();
+      if (!statsByClass[record.classId]) statsByClass[record.classId] = { attended: 0, total: 0 };
+      
       uniqueDatesByClass[record.classId].add(record.date);
-
-      if (!statsByClass[record.classId]) {
-        statsByClass[record.classId] = { attended: 0, total: 0 };
-      }
-       if (record.status === 'Present') {
+      if (record.status === 'Present') {
         statsByClass[record.classId].attended++;
       }
     });
 
-     Object.keys(uniqueDatesByClass).forEach(classId => {
+    // Set total classes based on unique dates attended, not total records
+    for (const classId in uniqueDatesByClass) {
         if(statsByClass[classId]) {
             statsByClass[classId].total = uniqueDatesByClass[classId].size;
         }
-    });
+    }
 
     return Object.entries(statsByClass).map(([classId, stats]) => {
       const classInfo = classMap.get(classId);
-      // Here we assume total classes might need to be fetched or is known.
-      // For this dynamic version, we'll calculate percentage based on records we have.
-      // A more robust solution might store total conducted classes elsewhere.
       const percentage = stats.total > 0 ? (stats.attended / stats.total) * 100 : 0;
       return {
         subject: classInfo?.name || 'Unknown Class',
@@ -129,26 +131,20 @@ export default function MyAttendancePage() {
 
     attendanceRecords.forEach(record => {
         const month = format(parseISO(record.date), 'MMM');
-        const day = record.date;
+        if (!uniqueDaysByMonth[month]) uniqueDaysByMonth[month] = new Set();
+        uniqueDaysByMonth[month].add(record.date);
 
-        if (!uniqueDaysByMonth[month]) {
-            uniqueDaysByMonth[month] = new Set();
-        }
-        uniqueDaysByMonth[month].add(day);
-
-        if (!attendanceByMonth[month]) {
-            attendanceByMonth[month] = { present: 0, total: 0 };
-        }
+        if (!attendanceByMonth[month]) attendanceByMonth[month] = { present: 0, total: 0 };
         if (record.status === 'Present') {
             attendanceByMonth[month].present++;
         }
     });
 
-    Object.keys(uniqueDaysByMonth).forEach(month => {
+    for (const month in uniqueDaysByMonth) {
         if(attendanceByMonth[month]) {
             attendanceByMonth[month].total = uniqueDaysByMonth[month].size;
         }
-    });
+    }
 
     const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -156,10 +152,8 @@ export default function MyAttendancePage() {
         .filter(month => attendanceByMonth[month])
         .map(month => {
             const { present, total } = attendanceByMonth[month];
-            return {
-                date: month,
-                attendance: parseFloat(((present / total) * 100).toFixed(1)),
-            };
+            const percentage = total > 0 ? (present / total) * 100 : 0;
+            return { date: month, attendance: parseFloat(percentage.toFixed(1)) };
         });
 
   }, [attendanceRecords]);
