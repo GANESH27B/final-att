@@ -64,19 +64,28 @@ export default function ClassManagementPage() {
   const facultyQuery = useMemoFirebase(() => 
     firestore && user?.role === 'admin' ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, 
   [firestore, user]);
-  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
+  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery, user?.role === 'admin');
   
   const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
   
   const facultyMap = useMemo(() => {
+    const map = new Map<string, string>();
     if (user?.role === 'admin' && faculty) {
-      return new Map(faculty.map(f => [f.id, f.name]));
+      faculty.forEach(f => map.set(f.id, f.name));
     }
     if (user?.role === 'faculty' && user) {
-        return new Map([[user.id, user.name]]);
+        map.set(user.id, user.name);
     }
-    return new Map();
+    // For admin role, we might need a complete map even if the classes belong to one faculty.
+    // Fetching all faculty separately ensures we have the names.
+    if (user?.role === 'admin' && faculty) {
+      faculty.forEach(f => map.set(f.id, f.name));
+    } else if (user) {
+      // For non-admins, just add themselves to the map.
+      map.set(user.id, user.name);
+    }
+    return map;
   }, [user, faculty]);
 
 
@@ -159,7 +168,7 @@ export default function ClassManagementPage() {
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {enrichedClasses.map((cls) => (
                 <Link key={cls.id} href={`/dashboard/classes/${cls.id}`} passHref>
-                  <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
+                  <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors cursor-pointer">
                     <CardHeader>
                       <CardTitle>{cls.name}</CardTitle>
                       <CardDescription>Section {cls.section}</CardDescription>
