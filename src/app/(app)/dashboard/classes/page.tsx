@@ -71,18 +71,11 @@ export default function ClassManagementPage() {
   
   const facultyMap = useMemo(() => {
     const map = new Map<string, string>();
+    // For admin role, we fetch all faculty and create a map.
     if (user?.role === 'admin' && faculty) {
       faculty.forEach(f => map.set(f.id, f.name));
-    }
-    if (user?.role === 'faculty' && user) {
-        map.set(user.id, user.name);
-    }
-    // For admin role, we might need a complete map even if the classes belong to one faculty.
-    // Fetching all faculty separately ensures we have the names.
-    if (user?.role === 'admin' && faculty) {
-      faculty.forEach(f => map.set(f.id, f.name));
-    } else if (user) {
-      // For non-admins, just add themselves to the map.
+    } else if (user?.role === 'faculty') {
+      // For faculty, just add themselves to the map.
       map.set(user.id, user.name);
     }
     return map;
