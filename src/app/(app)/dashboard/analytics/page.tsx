@@ -1,7 +1,7 @@
 // Using client directive for form interactivity and hooks
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -65,6 +65,7 @@ const visualizationOptions = [
 type ActionState = {
   data: AttendanceInsightsOutput | null;
   errors?: z.ZodIssue[];
+  message?: string;
 };
 
 export default function AnalyticsPage() {
@@ -73,6 +74,7 @@ export default function AnalyticsPage() {
 
   const [state, formAction, isPending] = useActionState(handleGenerateReport, {
     data: null,
+    errors: [],
   });
 
   const form = useForm<FormValues>({
@@ -91,23 +93,33 @@ export default function AnalyticsPage() {
   const { data: classesData, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
   const { data: usersData, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
 
-  const students = usersData?.filter(u => u.role === 'student') || [];
-  const faculty = usersData?.filter(u => u.role === 'faculty') || [];
+  const { students, faculty } = useMemo(() => {
+    const students = usersData?.filter(u => u.role === 'student') || [];
+    const faculty = usersData?.filter(u => u.role === 'faculty') || [];
+    return { students, faculty };
+  }, [usersData]);
 
 
   const analysisType = form.watch("analysisType");
   
   useEffect(() => {
-    if (state.errors) {
+    if (state.errors && state.errors.length > 0) {
       toast({
         variant: "destructive",
         title: "Validation Error",
-        description: "Please check the form for errors.",
+        description: state.message || "Please check the form for errors.",
       });
       state.errors.forEach((error) => {
         form.setError(error.path[0] as keyof FormValues, {
           message: error.message,
         });
+      });
+    }
+     if (!state.errors && state.message) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: state.message,
       });
     }
   }, [state, form, toast]);
@@ -116,31 +128,37 @@ export default function AnalyticsPage() {
     _prevState: ActionState,
     formData: FormData
   ): Promise<ActionState> {
-    const data = Object.fromEntries(formData);
-    const parsed = formSchema.safeParse({
-      ...data,
+    const data = {
+      analysisType: formData.get('analysisType'),
+      targetId: formData.get('targetId'),
+      reportFormat: formData.get('reportFormat'),
       visualizationTypes: formData.getAll('visualizationTypes')
-    });
+    };
+
+    const parsed = formSchema.safeParse(data);
 
     if (!parsed.success) {
-        return { data: null, errors: parsed.error.issues };
+        return { data: null, errors: parsed.error.issues, message: "Invalid form data." };
     }
 
     try {
+      // Dummy data for now. In a real scenario, you'd fetch based on parsed.data
       const result = await generateAttendanceInsights({
         attendanceData: JSON.stringify({ message: "Dummy attendance data for " + parsed.data.targetId }),
         analysisPreferences: `Focus on ${parsed.data.analysisType}`,
         reportFormat: parsed.data.reportFormat,
         visualizationTypes: parsed.data.visualizationTypes as ('bar' | 'pie' | 'line')[],
       });
-      return { data: result };
-    } catch (e) {
+      // On success, reset form fields or show success message
+      return { data: result, errors: [] };
+    } catch (e: any) {
       console.error(e);
-      return { data: null };
+      return { data: null, errors: [], message: e.message || "An unexpected error occurred." };
     }
   }
 
   const isLoading = isLoadingClasses || isLoadingUsers;
+  const currentSelectionData = analysisType === 'class' ? classesData : (analysisType === 'student' ? students : faculty);
 
   return (
     <div className="space-y-6">
@@ -165,6 +183,7 @@ export default function AnalyticsPage() {
                           field.onChange(value);
                           form.reset({
                               ...form.getValues(),
+                              analysisType: value as 'class' | 'student' | 'faculty',
                               targetId: ""
                           });
                       }} defaultValue={field.value}>
@@ -196,9 +215,7 @@ export default function AnalyticsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {analysisType === 'class' && classesData?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                          {analysisType === 'student' && students.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                          {analysisType === 'faculty' && faculty.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                          {currentSelectionData?.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -264,16 +281,15 @@ export default function AnalyticsPage() {
                                     <FormControl>
                                     <Checkbox
                                         value={item.id}
-                                        name={field.name}
+                                        name="visualizationTypes"
                                         checked={field.value?.includes(item.id)}
                                         onCheckedChange={(checked) => {
-                                        return checked
-                                            ? field.onChange([...(field.value || []), item.id])
-                                            : field.onChange(
-                                                (field.value || [])?.filter(
+                                        const updatedValue = checked
+                                            ? [...(field.value || []), item.id]
+                                            : (field.value || []).filter(
                                                 (value) => value !== item.id
-                                                )
-                                            )
+                                              );
+                                        field.onChange(updatedValue);
                                         }}
                                     />
                                     </FormControl>
@@ -298,7 +314,15 @@ export default function AnalyticsPage() {
           </form>
         </Form>
       </Card>
-      {state.data && (
+      {isPending && (
+          <Card>
+              <CardContent className="p-6 flex justify-center items-center">
+                  <Loader2 className="animate-spin h-8 w-8 text-primary" />
+                  <p className="ml-4 text-muted-foreground">Generating your report...</p>
+              </CardContent>
+          </Card>
+      )}
+      {state.data && !isPending && (
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bot /> Generated Insights</CardTitle>
@@ -307,13 +331,13 @@ export default function AnalyticsPage() {
             <CardContent className="space-y-4">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><FileText /> Report</h3>
-                    <a href={state.data.report} className="text-sm text-primary hover:underline">{`Download Report (${state.data.report.split('.').pop()?.toUpperCase()})`}</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); alert("This is a mock download link for: " + state.data?.report);}} className="text-sm text-primary hover:underline">{`Download Report (${state.data.report})`}</a>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><ImageIcon /> Visualizations</h3>
                     <div className="text-sm text-muted-foreground flex flex-col space-y-1 mt-2">
-                        {state.data.visualizations.map((vis, i) => <span key={i}>- {vis}</span>)}
+                        {state.data.visualizations.map((vis, i) => <a href="#" key={i} onClick={(e) => {e.preventDefault(); alert("This is a mock visualization link.")}} className="hover:underline">{vis}</a>)}
                     </div>
                 </div>
                 <Separator/>
@@ -330,9 +354,12 @@ export default function AnalyticsPage() {
 
 function SubmitButton({isPending}: {isPending: boolean}) {
     const { pending } = useFormStatus();
+    const disabled = pending || isPending;
     return (
-        <Button type="submit" disabled={pending || isPending}>
-            {(pending || isPending) ? <Loader2 className="animate-spin" /> : "Generate Report"}
+        <Button type="submit" disabled={disabled}>
+            {disabled ? <Loader2 className="animate-spin" /> : "Generate Report"}
         </Button>
     )
 }
+
+    
