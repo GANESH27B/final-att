@@ -48,8 +48,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 const facultyPaths = ['/dashboard/faculty', '/dashboard/attendance', '/dashboard/classes'];
                 const studentPaths = ['/dashboard/student', '/dashboard/my-attendance'];
 
+                // The base dashboard path is always authorized, it will redirect to the role-specific one
+                if (path === '/dashboard' || path === '/dashboard/') {
+                    return true;
+                }
+
                 if (role === 'admin') {
-                    return adminPaths.some(p => path.startsWith(p));
+                    // Admin can access all paths
+                    return true;
                 }
                 if (role === 'faculty') {
                     return facultyPaths.some(p => path.startsWith(p));
@@ -65,7 +71,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 router.replace(`/dashboard/${userRole}`);
             } else if (!isAuthorized(userRole, pathname)) {
                 // If user is on a page they are not authorized for, redirect them to their main dashboard.
-                // This check is now more robust.
                 router.replace(`/dashboard/${userRole}`);
             }
           } else {
