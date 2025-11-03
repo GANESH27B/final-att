@@ -10,7 +10,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDocs, query, where, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
