@@ -20,7 +20,8 @@ const AttendanceInsightsInputSchema = z.object({
 export type AttendanceInsightsInput = z.infer<typeof AttendanceInsightsInputSchema>;
 
 const AttendanceInsightsOutputSchema = z.object({
-  report: z.string().describe('The generated attendance report in the specified format.'),
+  report: z.string().describe('The generated attendance report as a Base64 encoded string.'),
+  reportFormat: z.enum(['PDF', 'Excel']).describe('The format of the generated report.'),
   visualizations: z.array(z.string()).describe('URLs or data URIs of the generated visualizations.'),
   insights: z.string().describe('AI-generated insights, including identification of at-risk students and attendance trends.'),
 });
@@ -51,6 +52,7 @@ const attendanceAnalyticsInsightsPrompt = ai.definePrompt({
 
   Deliver the report, visualizations, and insights in a structured format, ensuring they are easy to understand and actionable for admins and faculty.
 
+  The report MUST be returned as a Base64 encoded string in the 'report' field.
   The visualizations should be returned as data URIs.
 `,
 });

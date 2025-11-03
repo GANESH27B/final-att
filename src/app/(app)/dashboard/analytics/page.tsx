@@ -41,8 +41,8 @@ import { Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
-import { Class, User } from "@/lib/types";
+import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { Class, User, AttendanceRecord } from "@/lib/types";
 
 const formSchema = z.object({
   analysisType: z.enum(["class", "student", "faculty"]),
@@ -99,12 +99,52 @@ export default function AnalyticsPage() {
     startTransition(async () => {
       try {
         setResult(null);
+        if (!firestore) {
+          throw new Error("Firestore is not initialized.");
+        }
+
+        let attendanceQuery;
+        const analysisType = values.analysisType;
+        const targetId = values.targetId;
+
+        if (analysisType === 'class') {
+          attendanceQuery = query(collection(firestore, `classes/${targetId}/attendance`));
+        } else if (analysisType === 'student') {
+          attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('studentId', '==', targetId));
+        } else if (analysisType === 'faculty') {
+          // This is more complex, requires getting all classes for a faculty, then all attendance for those classes.
+          const facultyClassesQuery = query(collection(firestore, 'classes'), where('facultyId', '==', targetId));
+          const facultyClassesSnap = await getDocs(facultyClassesQuery);
+          const classIds = facultyClassesSnap.docs.map(doc => doc.id);
+          if (classIds.length > 0) {
+            attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
+          } else {
+            // No classes for this faculty, so no attendance data.
+            toast({ title: "No Data", description: "This faculty member has no classes to analyze." });
+            return;
+          }
+        }
+
+        if (!attendanceQuery) {
+            toast({ title: "No Data", description: "Could not form a query for attendance data." });
+            return;
+        }
+
+        const attendanceSnap = await getDocs(attendanceQuery);
+        const attendanceData = attendanceSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+
+        if(attendanceData.length === 0) {
+            toast({ title: "No Data", description: "No attendance records found for the selected criteria." });
+            return;
+        }
+
         const insights = await generateAttendanceInsights({
-          attendanceData: JSON.stringify({ message: "Dummy attendance data for " + values.targetId }),
-          analysisPreferences: `Focus on ${values.analysisType}`,
+          attendanceData: JSON.stringify(attendanceData),
+          analysisPreferences: `Focus on ${values.analysisType} with ID ${values.targetId}`,
           reportFormat: values.reportFormat,
           visualizationTypes: values.visualizationTypes as ('bar' | 'pie' | 'line')[],
         });
+
         setResult(insights);
         toast({
           title: "Report Generated",
@@ -119,6 +159,38 @@ export default function AnalyticsPage() {
         });
       }
     });
+  };
+
+  const handleDownloadReport = () => {
+    if (!result) return;
+    
+    const mimeType = result.reportFormat === 'PDF' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const fileExtension = result.reportFormat === 'PDF' ? '.pdf' : '.xlsx';
+    
+    try {
+      const byteCharacters = atob(result.report);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], {type: mimeType});
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `attendance_report_${new Date().toISOString().slice(0,10)}${fileExtension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (error) {
+      console.error("Download failed:", error);
+      toast({
+        variant: "destructive",
+        title: "Download Failed",
+        description: "The report data could not be processed for download."
+      });
+    }
   };
 
   const isLoading = isLoadingClasses || isLoadingUsers;
@@ -296,13 +368,13 @@ export default function AnalyticsPage() {
             <CardContent className="space-y-4">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><FileText /> Report</h3>
-                    <a href="#" onClick={(e) => { e.preventDefault(); alert("This is a mock download link for: " + result?.report);}} className="text-sm text-primary hover:underline">{`Download Report (${result.report})`}</a>
+                    <Button variant="link" className="p-0 h-auto text-sm" onClick={handleDownloadReport}>{`Download Report (${result.reportFormat})`}</Button>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><ImageIcon /> Visualizations</h3>
                     <div className="text-sm text-muted-foreground flex flex-col space-y-1 mt-2">
-                        {result.visualizations.map((vis, i) => <a href="#" key={i} onClick={(e) => {e.preventDefault(); alert("This is a mock visualization link.")}} className="hover:underline">{vis}</a>)}
+                        {result.visualizations.map((vis, i) => <a href={vis} key={i} target="_blank" rel="noopener noreferrer" className="hover:underline">Visualization {i+1}</a>)}
                     </div>
                 </div>
                 <Separator/>
