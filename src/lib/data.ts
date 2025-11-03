@@ -3,17 +3,17 @@ import { User, Class, AttendanceRecord, StudentAttendance } from "@/lib/types";
 export const mockUsers: User[] = [
   { id: "USR001", name: "Admin User", email: "admin@example.com", role: "admin", avatarUrl: "https://picsum.photos/seed/101/40/40", status: "Active" },
   { id: "USR002", name: "Dr. Evelyn Reed", email: "evelyn.reed@example.com", role: "faculty", avatarUrl: "https://picsum.photos/seed/201/40/40", status: "Active" },
-  { id: "USR003", name: "John Doe", email: "john.doe@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/102/40/40", status: "Active" },
-  { id: "USR004", name: "Jane Smith", email: "jane.smith@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/103/40/40", status: "Active" },
+  { id: "USR003", name: "John Doe", email: "john.doe@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/102/40/40", status: "Active", registrationNumber: "S001" },
+  { id: "USR004", name: "Jane Smith", email: "jane.smith@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/103/40/40", status: "Active", registrationNumber: "S002" },
   { id: "USR005", name: "Prof. Alan Turing", email: "alan.turing@example.com", role: "faculty", avatarUrl: "https://picsum.photos/seed/202/40/40", status: "Active" },
-  { id: "USR006", name: "Peter Pan", email: "peter.pan@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/104/40/40", status: "Inactive" },
+  { id: "USR006", name: "Peter Pan", email: "peter.pan@example.com", role: "student", avatarUrl: "https://picsum.photos/seed/104/40/40", status: "Inactive", registrationNumber: "S003" },
 ];
 
-export const mockClasses: Class[] = [
-  { id: "CLS01", name: "Computer Science 101", faculty: "Dr. Evelyn Reed", studentCount: 35, section: "A" },
-  { id: "CLS02", name: "Advanced Mathematics", faculty: "Prof. Alan Turing", studentCount: 28, section: "B" },
-  { id: "CLS03", name: "History of Art", faculty: "Dr. Evelyn Reed", studentCount: 42, section: "A" },
-  { id: "CLS04", name: "Quantum Physics", faculty: "Prof. Alan Turing", studentCount: 22, section: "C" },
+export const mockClasses: Omit<Class, 'facultyId'>[] = [
+  { id: "CLS01", name: "Computer Science 101", section: "A" },
+  { id: "CLS02", name: "Advanced Mathematics", section: "B" },
+  { id: "CLS03", name: "History of Art", section: "A" },
+  { id: "CLS04", name: "Quantum Physics", section: "C" },
 ];
 
 export const mockAttendanceRecords: AttendanceRecord[] = [

@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirestore, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { User } from "@/lib/types";
 import { useState } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, runTransaction } from "firebase/firestore";
 
 interface AddClassDialogProps {
     faculty: User[];
@@ -32,7 +32,7 @@ interface AddClassDialogProps {
 export function AddClassDialog({ faculty }: AddClassDialogProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { user } = useUser();
+  const { user } = useUser(); // Use useUser to get the currently logged-in user
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -52,21 +52,37 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
     }
     setLoading(true);
 
-    const selectedFacultyId = facultyId || user.uid;
+    // If an admin is creating a class, they can choose a faculty member.
+    // If a faculty member is creating, it defaults to their own ID.
+    const assignedFacultyId = facultyId || user.uid;
+
     const classData = {
       name,
       section,
-      facultyId: selectedFacultyId,
+      facultyId: assignedFacultyId,
       createdAt: serverTimestamp(),
     };
 
-    const classCollectionRef = collection(firestore, 'users', selectedFacultyId, 'classes');
+    // The document is created in two places: 
+    // 1. Under the faculty's user profile for ownership tracking.
+    // 2. In a root-level 'classes' collection for easier querying by students/admins.
+    const facultyClassesCollectionRef = collection(firestore, 'users', assignedFacultyId, 'classes');
+    const rootClassesCollectionRef = collection(firestore, 'classes');
 
-    addDoc(classCollectionRef, classData)
-      .then(() => {
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            // Create the class document in the root collection
+            const newClassRef = doc(rootClassesCollectionRef);
+            transaction.set(newClassRef, classData);
+
+            // Create a mirrored document under the faculty's subcollection for ownership/listing
+            const facultyClassRef = doc(facultyClassesCollectionRef, newClassRef.id);
+            transaction.set(facultyClassRef, classData);
+        });
+
         toast({
-          title: "Class Created",
-          description: `${name} - Section ${section} has been successfully created.`,
+            title: "Class Created",
+            description: `${name} - Section ${section} has been successfully created.`,
         });
 
         // Reset form and close dialog
@@ -74,11 +90,12 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
         setSection("");
         setFacultyId("");
         setOpen(false);
-      })
-      .catch((error: any) => {
+
+    } catch (error: any) {
         if (error.code === 'permission-denied') {
+          // Emitting a general error as the transaction involves multiple paths
           const permissionError = new FirestorePermissionError({
-              path: classCollectionRef.path,
+              path: `users/${assignedFacultyId}/classes and /classes`,
               operation: 'create',
               requestResourceData: classData,
           });
@@ -90,10 +107,9 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
               description: error.message,
           });
         }
-      })
-      .finally(() => {
+    } finally {
         setLoading(false);
-      });
+    }
   };
 
 
