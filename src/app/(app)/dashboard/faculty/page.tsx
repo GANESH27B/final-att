@@ -1,3 +1,4 @@
+
 "use client"
 import {
   Card,
@@ -7,25 +8,142 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { BarChart, LineChart } from "recharts";
-import { Users, BookOpen, Percent, TrendingUp, TrendingDown } from "lucide-react";
-import { classAttendanceData, overallAttendanceData } from "@/lib/data";
+import { Users, BookOpen, Percent, TrendingUp } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
-
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
+import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
+import { useMemo } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format, parseISO, startOfToday, isFuture } from 'date-fns';
 
 const chartConfig = {
   attendance: {
     label: "Attendance",
     color: "hsl(var(--accent))",
   },
-  cs101: { label: "CS 101", color: "hsl(var(--chart-1))" },
-  math203: { label: "Math 203", color: "hsl(var(--chart-2))" },
-  art100: { label: "Art 100", color: "hsl(var(--chart-3))" },
-  phys301: { label: "Phys 301", color: "hsl(var(--chart-4))" },
-  eng210: { label: "Eng 210", color: "hsl(var(--chart-5))" },
-}
+};
 
 export default function FacultyDashboardPage() {
+    const firestore = useFirestore();
+    const { user } = useUser();
+
+    const facultyClassesQuery = useMemoFirebase(() => 
+        firestore && user ? query(collection(firestore, 'classes'), where('facultyId', '==', user.uid)) : null,
+        [firestore, user]
+    );
+
+    const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
+
+    const attendanceQuery = useMemoFirebase(() => 
+        firestore && user ? query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid)) : null,
+        [firestore, user]
+    );
+
+    const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+    
+    const studentsQuery = useMemoFirebase(() => {
+        if (!firestore || !myClasses || myClasses.length === 0) return null;
+        // This is a simplification. For a large number of classes, this would be inefficient.
+        // It fetches all students and filters client-side. A better approach for scale
+        // would involve dedicated student count fields on class docs or a collectionGroup query if indexed.
+        return query(collectionGroup(firestore, 'students'));
+    }, [firestore, myClasses]);
+
+    const { data: allStudents, isLoading: isLoadingStudents } = useCollection<UserType>(studentsQuery);
+    
+    const myStudentIds = useMemo(() => {
+        if (!myClasses || !allStudents) return [];
+        const classIds = myClasses.map(c => c.id);
+        return allStudents.filter(s => s.classId && classIds.includes(s.classId)).map(s => s.id);
+    }, [myClasses, allStudents]);
+
+
+    const isLoading = isLoadingClasses || isLoadingAttendance || (myClasses && myClasses.length > 0 && isLoadingStudents);
+
+    const stats = useMemo(() => {
+        if (!myClasses || !attendance) {
+            return {
+                totalStudents: 0,
+                totalClasses: 0,
+                avgAttendance: 0,
+                upcomingClass: "N/A"
+            };
+        }
+
+        const totalClasses = myClasses.length;
+        const totalStudents = new Set(myStudentIds).size;
+
+        const presentCount = attendance.filter(a => a.status === 'Present').length;
+        const avgAttendance = attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
+        
+        // This is a simplification for upcoming class. A real implementation would need class schedules.
+        const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
+
+        return {
+            totalStudents,
+            totalClasses,
+            avgAttendance,
+            upcomingClass
+        };
+    }, [myClasses, attendance, myStudentIds]);
+    
+    const myClassAttendanceData = useMemo(() => {
+        if (!myClasses || !attendance || myClasses.length === 0) return [];
+    
+        const classAttendance = myClasses.map(cls => {
+            const relevantAttendance = attendance.filter(a => a.classId === cls.id);
+            if (relevantAttendance.length === 0) {
+                return { name: cls.name, attendance: 0 };
+            }
+            const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+            const avg = (presentCount / relevantAttendance.length) * 100;
+            return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(myClasses.indexOf(cls) % 5) + 1}))` };
+        });
+    
+        myClasses.forEach((cls, index) => {
+            const key = cls.name.replace(/\s+/g, '').toLowerCase();
+            if (!chartConfig[key as keyof typeof chartConfig]) {
+                (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
+            }
+        });
+    
+        return classAttendance;
+    
+    }, [myClasses, attendance]);
+
+    const myOverallAttendanceData = useMemo(() => {
+        if (!attendance || attendance.length === 0) return [];
+
+        const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
+
+        attendance.forEach(record => {
+            const month = format(parseISO(record.date), 'MMM');
+            if (!attendanceByMonth[month]) {
+                attendanceByMonth[month] = { present: 0, total: 0 };
+            }
+            attendanceByMonth[month].total++;
+            if (record.status === 'Present') {
+                attendanceByMonth[month].present++;
+            }
+        });
+
+        const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        return monthOrder
+            .filter(month => attendanceByMonth[month])
+            .map(month => {
+                const { present, total } = attendanceByMonth[month];
+                return {
+                    date: month,
+                    attendance: parseFloat(((present / total) * 100).toFixed(1)),
+                };
+            });
+
+    }, [attendance]);
+
+
   return (
     <div className="space-y-4">
        <h1 className="text-2xl font-bold tracking-tight font-headline">Faculty Dashboard</h1>
@@ -36,9 +154,9 @@ export default function FacultyDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">120</div>
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.totalStudents}</div>}
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              across 3 classes
+              across {myClasses?.length || 0} classes
             </p>
           </CardContent>
         </Card>
@@ -48,7 +166,7 @@ export default function FacultyDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.totalClasses}</div>}
              <p className="text-xs text-muted-foreground">
               This semester
             </p>
@@ -60,9 +178,9 @@ export default function FacultyDashboardPage() {
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">92.1%</div>
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.avgAttendance.toFixed(1)}%</div>}
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <TrendingUp className="h-3 w-3 text-green-500" /> +2.5% from last week
+              Across all your classes
             </p>
           </CardContent>
         </Card>
@@ -72,7 +190,7 @@ export default function FacultyDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">CS 101</div>
+             {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.upcomingClass}</div>}
             <p className="text-xs text-muted-foreground">Today at 10:00 AM</p>
           </CardContent>
         </Card>
@@ -82,19 +200,21 @@ export default function FacultyDashboardPage() {
           <CardHeader>
             <CardTitle>My Class Attendance</CardTitle>
             <CardDescription>
-              Average attendance percentage for your classes this week.
+              Average attendance percentage for your classes.
             </CardDescription>
           </CardHeader>
           <CardContent>
-             <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <BarChart data={classAttendanceData} accessibilityLayer>
+             {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+             <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                <BarChart data={myClassAttendanceData} accessibilityLayer>
                    <CartesianGrid vertical={false} />
-                   <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 3)} />
-                   <YAxis />
+                   <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
+                   <YAxis domain={[0, 100]} />
                    <Tooltip cursor={false} content={<ChartTooltipContent />} />
                    <Bar dataKey="attendance" radius={8} />
                 </BarChart>
              </ChartContainer>
+             )}
           </CardContent>
         </Card>
         <Card className="lg:col-span-3">
@@ -103,18 +223,22 @@ export default function FacultyDashboardPage() {
             <CardDescription>Your students' monthly attendance trend.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+            <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                <LineChart data={myOverallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                  <YAxis />
+                  <YAxis domain={[0, 100]} />
                   <Tooltip cursor={false} content={<ChartTooltipContent />} />
                   <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
                 </LineChart>
             </ChartContainer>
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
+    
