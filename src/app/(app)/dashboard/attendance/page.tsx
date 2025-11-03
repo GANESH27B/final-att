@@ -16,13 +16,26 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, query, setDoc, where, serverTimestamp } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+
+const scannerConfig = {
+  fps: 10,
+  qrbox: { width: 250, height: 250 },
+  supportedScanTypes: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.UPC_A,
+  ]
+};
+
 
 export default function AttendancePage() {
   const { toast } = useToast();
@@ -175,12 +188,13 @@ export default function AttendancePage() {
   useEffect(() => {
     if (sessionActive && hasCameraPermission && !scannerRef.current) {
         const scanner = new Html5Qrcode('reader', {
-            verbose: false
+            verbose: false,
+            formatsToSupport: scannerConfig.supportedScanTypes,
         });
         scannerRef.current = scanner;
         scanner.start(
             { facingMode: "environment" },
-            { fps: 10, qrbox: { width: 250, height: 250 } },
+            scannerConfig,
             (decodedText, decodedResult) => { 
                 markAttendance(decodedText); 
                 scanner.pause(true);
@@ -188,7 +202,7 @@ export default function AttendancePage() {
             },
             (errorMessage) => { /* ignore */ }
         ).catch(err => {
-            console.error("QR Scanner start failed:", err);
+            console.error("QR/Barcode Scanner start failed:", err);
             if (err.name === "NotAllowedError") setHasCameraPermission(false);
         });
     }
@@ -235,8 +249,8 @@ export default function AttendancePage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ScanLine /> QR Scanner</CardTitle>
-            <CardDescription>Scan student QR codes to mark attendance.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><ScanLine /> QR/Barcode Scanner</CardTitle>
+            <CardDescription>Scan student QR or Barcodes to mark attendance.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
