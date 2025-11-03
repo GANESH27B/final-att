@@ -19,15 +19,29 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 
 function ClassCard({ cls }: { cls: Class; }) {
+    const firestore = useFirestore();
+    const enrolledStudentsCollectionRef = useMemoFirebase(() => 
+        (firestore ? collection(firestore, `classes/${cls.id}/students`) : null), 
+        [firestore, cls.id]
+    );
+    const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<UserType>(enrolledStudentsCollectionRef);
+
     return (
         <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
             <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
             <CardHeader>
-                <CardTitle>{cls.name}</CardTitle>
-                <CardDescription>Section {cls.section}</CardDescription>
+                <CardTitle>Section {cls.section}</CardTitle>
+                <CardDescription>{cls.name}</CardDescription>
             </CardHeader>
             <CardContent className="flex-grow">
-                {/* Content can be added here in the future */}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="h-4 w-4" />
+                    {isLoadingEnrolled ? (
+                        <Skeleton className="h-4 w-16" />
+                    ) : (
+                        <span>{enrolledStudents?.length || 0} Student{enrolledStudents?.length !== 1 ? 's' : ''}</span>
+                    )}
+                </div>
             </CardContent>
             <CardFooter>
                  <div className="h-5" />
