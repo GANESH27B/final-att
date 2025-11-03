@@ -18,11 +18,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, query, setDoc, where, serverTimestamp } from "firebase/firestore";
+import { collection, doc, query, setDoc, where, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 const scannerConfig = {
   fps: 10,
@@ -102,6 +103,52 @@ export default function AttendancePage() {
     })
   };
 
+  const setAttendanceStatus = useCallback(async (student: User, status: 'Present' | 'Absent') => {
+    if (!firestore || !selectedClassId || !sessionDate || !currentUser) return;
+
+    const studentId = student.id;
+    const attendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
+    const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${selectedClassId}_${sessionDate}`);
+    
+    if (status === 'Absent') {
+        // Delete the attendance record
+        deleteDoc(attendanceDocRef).catch(console.error);
+        deleteDoc(studentAttendanceDocRef).catch(console.error);
+        toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
+    } else {
+        // Create or update the attendance record
+        const attendanceData = {
+          studentId,
+          studentName: student.name,
+          classId: selectedClassId,
+          facultyId: currentUser.uid,
+          date: sessionDate,
+          status: "Present",
+          timestamp: serverTimestamp(),
+        };
+
+        setDoc(attendanceDocRef, attendanceData).catch((error: any) => {
+            if (error.code === 'permission-denied') {
+              const permissionError = new FirestorePermissionError({ path: attendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
+              errorEmitter.emit('permission-error', permissionError);
+            } else {
+                toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in class log." });
+            }
+        });
+        
+        setDoc(studentAttendanceDocRef, attendanceData).catch((error: any) => {
+            if (error.code === 'permission-denied') {
+              const permissionError = new FirestorePermissionError({ path: studentAttendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
+              errorEmitter.emit('permission-error', permissionError);
+            } else {
+                toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in student record." });
+            }
+        });
+        toast({ title: "Marked Present", description: `${student.name} marked as present.`, className: "bg-green-100 dark:bg-green-900 border-green-500"});
+    }
+  }, [firestore, selectedClassId, sessionDate, currentUser, toast]);
+
+
   const markAttendance = useCallback(async (studentIdentifier: string) => {
     if (!firestore || !selectedClassId || !sessionActive || !currentUser) return;
 
@@ -123,49 +170,11 @@ export default function AttendancePage() {
         toast({ title: "Already Marked", description: `${student.name} is already marked as present.` });
         return;
     }
-
-    const studentId = student.id;
-    const attendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
-    const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${selectedClassId}_${sessionDate}`);
-
-    const attendanceData = {
-      studentId,
-      studentName: student.name,
-      classId: selectedClassId,
-      facultyId: currentUser.uid,
-      date: sessionDate,
-      status: "Present",
-      timestamp: serverTimestamp(),
-    };
-
-    setDoc(attendanceDocRef, attendanceData).catch((error: any) => {
-        if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: attendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
-          errorEmitter.emit('permission-error', permissionError);
-        } else {
-            toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in class log." });
-            console.error("Error marking attendance: ", error);
-        }
-    });
     
-    setDoc(studentAttendanceDocRef, attendanceData).catch((error: any) => {
-        if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: studentAttendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
-          errorEmitter.emit('permission-error', permissionError);
-        } else {
-            toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in student record." });
-            console.error("Error marking student attendance: ", error);
-        }
-    });
-
+    await setAttendanceStatus(student, 'Present');
     setLastScanResult({ status: 'success', message: `${student.name} has been marked present.` });
-    toast({
-      title: "Attendance Marked",
-      description: `${student.name} has been marked as present.`,
-      className: "bg-green-100 dark:bg-green-900 border-green-500",
-    });
 
-  }, [firestore, selectedClassId, sessionActive, enrolledStudents, presentStudentIds, sessionDate, toast, currentUser, studentMap]);
+  }, [firestore, selectedClassId, sessionActive, enrolledStudents, presentStudentIds, toast, currentUser, studentMap, setAttendanceStatus]);
   
   const handleEndSession = () => {
     setSessionActive(false);
@@ -360,19 +369,16 @@ export default function AttendancePage() {
               {!isLoading && enrolledStudents?.map((student) => {
                 const isPresent = presentStudentIds.has(student.id);
                 return (
-                    <div key={student.id} className={cn("flex items-center justify-between p-2 rounded-md border", isPresent && "bg-green-50 dark:bg-green-950/20")}>
+                    <div key={student.id} className="flex items-center justify-between p-2 rounded-md border">
                         <span className="font-medium text-sm">{student.name}</span>
-                        {isPresent ? (
-                            <Badge variant="secondary" className="flex items-center gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                <UserCheck className="h-3 w-3" />
-                                Present
-                            </Badge>
-                        ) : (
-                            <Badge variant="outline" className="flex items-center gap-1 text-red-600 border-red-500/50">
-                                <UserX className="h-3 w-3" />
-                                Absent
-                            </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-xs", isPresent ? "text-green-600" : "text-red-600")}>{isPresent ? "Present" : "Absent"}</span>
+                          <Switch
+                            checked={isPresent}
+                            onCheckedChange={(checked) => setAttendanceStatus(student, checked ? 'Present' : 'Absent')}
+                            aria-label={`Mark ${student.name} as ${isPresent ? 'absent' : 'present'}`}
+                          />
+                        </div>
                     </div>
                 )
             })}
@@ -384,3 +390,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
