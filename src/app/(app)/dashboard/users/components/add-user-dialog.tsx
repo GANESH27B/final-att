@@ -14,14 +14,15 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { UserRole } from "@/lib/types";
 import { useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, getAuth } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { initializeApp, deleteApp } from "firebase/app";
+import { firebaseConfig } from "@/firebase/config";
 
 export function AddUserDialog() {
-  const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -35,7 +36,7 @@ export function AddUserDialog() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !firestore) {
+    if (!firestore) {
         toast({
             variant: "destructive",
             title: "Firebase not initialized",
@@ -45,9 +46,13 @@ export function AddUserDialog() {
     }
     setLoading(true);
 
+    // Create a temporary, secondary Firebase app for user creation
+    const tempAppName = `temp-user-creation-${Date.now()}`;
+    const tempApp = initializeApp(firebaseConfig, tempAppName);
+    const tempAuth = getAuth(tempApp);
+
     try {
-      // We create a temporary user on the client, then sign out to not affect the admin's session.
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
       const user = userCredential.user;
 
       const userData = {
@@ -67,9 +72,6 @@ export function AddUserDialog() {
       }
 
       await setDoc(userDocRef, userData);
-
-      // IMPORTANT: Sign out the newly created user to restore the admin's session
-      await auth.signOut();
       
       toast({
         title: "User Created",
@@ -87,9 +89,7 @@ export function AddUserDialog() {
     } catch (error: any) {
       if (error.code === 'permission-denied') {
         // This assumes the createUserWithEmailAndPassword succeeded but Firestore failed.
-        // The UID would be available on a temporary auth instance if we created one.
-        // For simplicity, we'll construct the error with what we have.
-        const uid = "new-user-uid-placeholder"; // We don't have the UID if auth creation fails.
+        const uid = tempAuth.currentUser?.uid || "new-user-uid-placeholder";
         const userDocRef = doc(firestore, "users", uid);
         const permissionError = new FirestorePermissionError({
             path: userDocRef.path,
@@ -105,6 +105,8 @@ export function AddUserDialog() {
         });
       }
     } finally {
+      // IMPORTANT: Clean up the temporary app instance
+      await deleteApp(tempApp);
       setLoading(false);
     }
   };
