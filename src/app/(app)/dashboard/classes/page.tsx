@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -11,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { User, Users } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
@@ -26,9 +27,8 @@ interface EnrichedClass extends Class {
 export default function ClassManagementPage() {
   const firestore = useFirestore();
   
-  // Directly use collectionGroup for classes, this is correct for admins.
-  // For faculty, we might need a different query, but let's assume admin view for now.
-  const classesQuery = useMemoFirebase(() => firestore ? collectionGroup(firestore, 'classes') : null, [firestore]);
+  // Changed from collectionGroup to collection to fix permission error
+  const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
   const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
 
   const usersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
