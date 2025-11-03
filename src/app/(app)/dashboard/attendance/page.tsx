@@ -39,7 +39,7 @@ const scannerConfig = {
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
       Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.UPC_A,
+      HtmlS5QrcodeSupportedFormats.UPC_A,
   ]
 };
 
@@ -172,6 +172,7 @@ export default function AttendancePage() {
     setSelectedClassId(null);
     setSessionDate("");
     setLastScanResult(null);
+    setHasCameraPermission(null);
     if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
         scannerRef.current = null;
@@ -184,22 +185,26 @@ export default function AttendancePage() {
 
   useEffect(() => {
     const requestCamera = async () => {
-        if (sessionActive && hasCameraPermission === null) {
-            try {
-                const devices = await Html5Qrcode.getCameras();
-                if (devices && devices.length) {
-                    setHasCameraPermission(true);
-                } else {
-                    setHasCameraPermission(false);
-                }
-            } catch (err) {
-                console.error('Camera permission error:', err);
-                setHasCameraPermission(false);
-            }
+      if (sessionActive && hasCameraPermission === null) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setHasCameraPermission(true);
+          // We don't need to do anything with the stream directly, just requesting it checks for permission.
+          // The stream should be stopped to free up the camera.
+          stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+          console.error('Camera permission error:', err);
+          setHasCameraPermission(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please allow camera access in your browser settings to use this feature.',
+          });
         }
+      }
     };
     requestCamera();
-  }, [sessionActive, hasCameraPermission]);
+  }, [sessionActive, hasCameraPermission, toast]);
 
   useEffect(() => {
     if (sessionActive && hasCameraPermission && !scannerRef.current) {
@@ -222,7 +227,7 @@ export default function AttendancePage() {
             (errorMessage) => { /* ignore */ }
         ).catch(err => {
             console.error("QR/Barcode Scanner start failed:", err);
-            if (String(err).includes("NotAllowedError")) {
+            if (String(err).includes("NotAllowedError") || String(err).includes("NotFoundError")) {
               setHasCameraPermission(false);
             }
         });
@@ -275,7 +280,7 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className={cn(!sessionActive && "hidden")} />
+                <div id="reader" className={cn("w-full h-full", !sessionActive && "hidden")} />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
@@ -287,6 +292,13 @@ export default function AttendancePage() {
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>Camera Access Denied</AlertTitle>
                         <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
+                    </Alert>
+                )}
+                 {sessionActive && hasCameraPermission === null && (
+                    <Alert className="absolute m-4">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Requesting Camera</AlertTitle>
+                        <AlertDescription>Please wait while we request camera access.</AlertDescription>
                     </Alert>
                 )}
             </div>
