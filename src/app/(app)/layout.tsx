@@ -13,6 +13,29 @@ import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Shield } from "lucide-react";
 
+const adminPaths = ['/dashboard/admin', '/dashboard/users', '/dashboard/classes', '/dashboard/analytics'];
+const facultyPaths = ['/dashboard/faculty', '/dashboard/attendance', '/dashboard/classes'];
+const studentPaths = ['/dashboard/student', '/dashboard/my-attendance'];
+
+const rolePaths: Record<UserRole, string[]> = {
+    admin: adminPaths,
+    faculty: facultyPaths,
+    student: studentPaths,
+};
+
+function isAuthorized(role: UserRole, path: string): boolean {
+    // The base dashboard path is a special case that will be redirected, so we can consider it authorized to prevent loops.
+    if (path === '/dashboard' || path === '/dashboard/') {
+        return true;
+    }
+    // Admin can access all paths.
+    if (role === 'admin') {
+        return true;
+    }
+    const authorizedPaths = rolePaths[role] || [];
+    return authorizedPaths.some(p => path.startsWith(p));
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading: userLoading } = useUser();
   const router = useRouter();
@@ -43,36 +66,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
             
-            const isAuthorized = (role: UserRole, path: string) => {
-                const adminPaths = ['/dashboard/admin', '/dashboard/users', '/dashboard/classes', '/dashboard/analytics'];
-                const facultyPaths = ['/dashboard/faculty', '/dashboard/attendance', '/dashboard/classes'];
-                const studentPaths = ['/dashboard/student', '/dashboard/my-attendance'];
-
-                // The base dashboard path is always authorized, it will redirect to the role-specific one
-                if (path === '/dashboard' || path === '/dashboard/') {
-                    return true;
-                }
-
-                if (role === 'admin') {
-                    // Admin can access all paths
-                    return true;
-                }
-                if (role === 'faculty') {
-                    return facultyPaths.some(p => path.startsWith(p));
-                }
-                if (role === 'student') {
-                    return studentPaths.some(p => path.startsWith(p));
-                }
-                return false;
-            }
-
-            // A base path of /dashboard should always redirect to the role-specific dashboard
+            // If user lands on the base dashboard path, redirect to their role-specific dashboard.
             if (pathname === '/dashboard' || pathname === '/dashboard/') {
                 router.replace(`/dashboard/${userRole}`);
             } else if (!isAuthorized(userRole, pathname)) {
                 // If user is on a page they are not authorized for, redirect them to their main dashboard.
+                toast({
+                    variant: "destructive",
+                    title: "Unauthorized",
+                    description: "You do not have permission to access this page.",
+                });
                 router.replace(`/dashboard/${userRole}`);
             }
+            // If authorized, do nothing and let the user see the page.
+
           } else {
              // If user is authenticated but has no firestore doc, send to login
              router.push("/login");
