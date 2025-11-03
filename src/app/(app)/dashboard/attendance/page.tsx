@@ -26,7 +26,17 @@ import { cn } from "@/lib/utils";
 
 const scannerConfig = {
   fps: 10,
-  qrbox: { width: 250, height: 250 },
+  qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+    // Make it responsive, but never smaller than 50px.
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    // Use 70% of the smallest edge, but ensure it's at least 250px for better scanning,
+    // or fallback to the minEdge if it's smaller.
+    const qrboxSize = Math.max(50, Math.min(250, minEdge * 0.7));
+    return {
+      width: qrboxSize,
+      height: qrboxSize,
+    };
+  },
   supportedScanTypes: [
       Html5QrcodeSupportedFormats.QR_CODE,
       Html5QrcodeSupportedFormats.CODE_128,
@@ -277,7 +287,7 @@ export default function AttendancePage() {
                     <AlertTitle>
                         {lastScanResult.status === "success" && "Scan Successful"}
                         {lastScanResult.status === "not_found" && "Student Not Found"}
-                        {lastScan_result.status === "already_marked" && "Already Marked"}
+                        {lastScanResult.status === "already_marked" && "Already Marked"}
                         {lastScanResult.status === "error" && "Scan Error"}
                     </AlertTitle>
                     <AlertDescription>{lastScanResult.message}</AlertDescription>
