@@ -1,3 +1,4 @@
+
 'use client';
 
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -68,6 +69,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         });
     } else if (role) {
         setLoading(false);
+    } else if (!userLoading && !user) {
+        // Explicitly handle the case where loading is done and there's no user
+        setLoading(false);
     }
   }, [user, userLoading, firestore, router, toast, role]);
 
@@ -111,3 +115,5 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </SidebarProvider>
   );
 }
+
+    

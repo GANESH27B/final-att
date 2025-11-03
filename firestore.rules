@@ -70,9 +70,11 @@ service cloud.firestore {
     // Admins can manage all users. Users can read/update their own profile.
     match /users/{userId} {
       allow get: if isAdmin() || isOwner(userId);
-      // Only admins should be able to list all users.
-      // Specific role-based queries (e.g., listing students) are handled with query constraints.
-      allow list: if isAdmin();
+      // list: Admins can list all users. Faculty can list other faculty for class assignment. Students can list other students for enrollment.
+      allow list: if isAdmin() 
+                  || (isFaculty() && request.query.where.role == 'faculty')
+                  || (isFaculty() && request.query.where.role == 'student')
+                  || (isStudent() && request.query.where.role == 'student');
       allow create: if isAdmin(); // Only admins can create users via the UI.
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
@@ -108,7 +110,7 @@ service cloud.firestore {
     match /classes/{classId}/students/{studentId} {
       // Read/List: Admin or the class owner can see the enrolled students.
       // A faculty member needs to list students to enroll them.
-      allow read, list: if isAdmin() || isClassOwner(classId) || isFaculty();
+      allow read, list: if isAdmin() || isClassOwner(classId);
       
       // Create/Update/Delete: Only the class owner or an admin can manage the roster.
       // We also check that the denormalized classId in the student record matches the path.
@@ -131,3 +133,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

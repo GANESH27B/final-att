@@ -26,49 +26,79 @@ interface EnrichedClass extends Class {
 
 export default function ClassManagementPage() {
   const firestore = useFirestore();
-  const { user: currentUser } = useUser();
+  const { user: currentUser, isUserLoading: isUserLoadingAuth } = useUser();
   
-  const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
-  const { data: allFetchedClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+  const [user, setUser] = useState<UserType | null>(null);
+  const [isLoadingUserRole, setIsLoadingUserRole] = useState(true);
 
-  const usersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserType>(usersCollection);
-  
-  const facultyQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, [firestore]);
-  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
-
-  const [userRole, setUserRole] = useState<string | null>(null);
-
+  // Get the user's role from their user document
   useEffect(() => {
-      if (users && currentUser) {
-          const role = users.find(u => u.id === currentUser.uid)?.role;
-          if (role) setUserRole(role);
-      }
-  }, [users, currentUser]);
-
-  const classes = useMemo(() => {
-    if (!allFetchedClasses || !currentUser) return [];
-    if (userRole === 'admin') {
-      return allFetchedClasses;
+    if (firestore && currentUser) {
+      const userDocRef = doc(firestore, 'users', currentUser.uid);
+      getDoc(userDocRef).then(docSnap => {
+        if (docSnap.exists()) {
+          setUser({ id: docSnap.id, ...docSnap.data() } as UserType);
+        }
+        setIsLoadingUserRole(false);
+      }).catch(() => setIsLoadingUserRole(false));
+    } else if (!isUserLoadingAuth) {
+      setIsLoadingUserRole(false);
     }
-    if (userRole === 'faculty') {
-      return allFetchedClasses.filter(c => c.facultyId === currentUser.uid);
-    }
-    return [];
-  }, [allFetchedClasses, currentUser, userRole]);
+  }, [firestore, currentUser, isUserLoadingAuth]);
 
+  // Determine which classes to query based on role
+  const classesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    if (user.role === 'admin') {
+      return collection(firestore, 'classes');
+    }
+    if (user.role === 'faculty') {
+      return query(collection(firestore, 'classes'), where('facultyId', '==', user.id));
+    }
+    return null; // Students see no classes on this page
+  }, [firestore, user]);
+  
+  const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery, !!user);
+
+  // Fetch all faculty members for the "Add Class" dialog (only for admins)
+  const facultyQuery = useMemoFirebase(() => 
+    firestore && user?.role === 'admin' ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, 
+  [firestore, user]);
+  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
+  
+  // This hook now only fetches ALL users if the current user is an admin
+  const allUsersQuery = useMemoFirebase(() => 
+    firestore && user?.role === 'admin' ? collection(firestore, 'users') : null,
+  [firestore, user]);
+  const { data: allUsers, isLoading: isLoadingAllUsers } = useCollection<UserType>(allUsersQuery);
 
   const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(true);
+  
+  const facultyMap = useMemo(() => {
+    if (user?.role === 'admin' && allUsers) {
+      return new Map(allUsers.filter(u => u.role === 'faculty').map(f => [f.id, f.name]));
+    }
+    if (user?.role === 'faculty' && user) {
+        return new Map([[user.id, user.name]]);
+    }
+    return new Map();
+  }, [user, allUsers]);
+
 
   const fetchStudentCounts = useCallback(async () => {
-    if (!firestore || !classes) return;
+    if (!firestore || !classes || classes.length === 0) return new Map<string, number>();
 
     const counts = new Map<string, number>();
     for (const cls of classes) {
-        const studentsCollectionRef = collection(firestore, `classes/${cls.id}/students`);
-        const snapshot = await getDocs(studentsCollectionRef);
-        counts.set(cls.id, snapshot.size);
+        try {
+            const studentsCollectionRef = collection(firestore, `classes/${cls.id}/students`);
+            const snapshot = await getDocs(studentsCollectionRef);
+            counts.set(cls.id, snapshot.size);
+        } catch (e) {
+            console.error(`Could not fetch student count for class ${cls.id}`, e);
+            counts.set(cls.id, 0);
+        }
     }
     return counts;
   }, [firestore, classes]);
@@ -76,28 +106,26 @@ export default function ClassManagementPage() {
 
   useEffect(() => {
     const processClasses = async () => {
-        setIsLoading(true);
-        if (classes && users) {
-            const facultyMap = new Map(users.filter(u => u.role === 'faculty').map(f => [f.id, f.name]));
-            const studentCounts = await fetchStudentCounts();
-
-            const enriched = classes.map(cls => ({
-                ...cls,
-                facultyName: facultyMap.get(cls.facultyId) || 'Unknown Faculty',
-                studentCount: studentCounts?.get(cls.id) || 0,
-            }));
-            setEnrichedClasses(enriched);
-            setIsLoading(false);
-        } else if (!isLoadingClasses && !isLoadingUsers) {
-            // Handle case where there are no classes or users
-            setEnrichedClasses([]);
-            setIsLoading(false);
+        if (!classes || isUserLoadingAuth || isLoadingUserRole || (user?.role === 'admin' && isLoadingAllUsers)) {
+             setIsProcessing(true);
+             return;
         }
+
+        setIsProcessing(true);
+        const studentCounts = await fetchStudentCounts();
+
+        const enriched = classes.map(cls => ({
+            ...cls,
+            facultyName: facultyMap.get(cls.facultyId) || 'Unknown Faculty',
+            studentCount: studentCounts?.get(cls.id) || 0,
+        }));
+        setEnrichedClasses(enriched);
+        setIsProcessing(false);
     };
     processClasses();
-  }, [classes, users, isLoadingClasses, isLoadingUsers, fetchStudentCounts]);
+  }, [classes, facultyMap, fetchStudentCounts, isUserLoadingAuth, isLoadingUserRole, user, isLoadingAllUsers]);
   
-  const finalIsLoading = isLoading || isLoadingClasses || isLoadingUsers || isLoadingFaculty;
+  const finalIsLoading = isUserLoadingAuth || isLoadingUserRole || isLoadingClasses || isProcessing;
   
   return (
     <div className="space-y-4">
@@ -107,10 +135,10 @@ export default function ClassManagementPage() {
             Class Management
           </h1>
           <p className="text-muted-foreground">
-            Create and manage classes and sections.
+            {user?.role === 'admin' ? "Create and manage classes and sections." : "View and manage your assigned classes."}
           </p>
         </div>
-        <AddClassDialog faculty={faculty || []} />
+        {user?.role === 'admin' && <AddClassDialog faculty={faculty || []} />}
       </div>
 
       {finalIsLoading ? (
@@ -164,7 +192,7 @@ export default function ClassManagementPage() {
           ) : (
             <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md mt-4">
                 <p>No classes found.</p>
-                <p className="text-sm">Click "Add Class" to create the first one.</p>
+                {user?.role === 'admin' && <p className="text-sm">Click "Add Class" to create the first one.</p>}
             </div>
           )}
         </>
@@ -172,3 +200,5 @@ export default function ClassManagementPage() {
     </div>
   );
 }
+
+    
