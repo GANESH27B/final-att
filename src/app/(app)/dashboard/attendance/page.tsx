@@ -67,6 +67,16 @@ export default function AttendancePage() {
     new Map(enrolledStudents?.map(s => [s.id, s]) || [])
   , [enrolledStudents]);
 
+  const handleClassSelection = (classId: string) => {
+    setSelectedClassId(classId);
+    setSessionDate(format(new Date(), "yyyy-MM-dd"));
+    setSessionActive(true);
+    toast({
+        title: "Session Started",
+        description: "You can now start taking attendance.",
+    })
+  };
+
   const markAttendance = useCallback(async (studentIdentifier: string) => {
     if (!firestore || !selectedClassId || !sessionActive || !currentUser) return;
 
@@ -128,18 +138,15 @@ export default function AttendancePage() {
     });
 
   }, [firestore, selectedClassId, sessionActive, enrolledStudents, presentStudentIds, sessionDate, toast, currentUser, studentMap]);
-
-  const handleStartSession = () => {
-    if (!selectedClassId) {
-      toast({ variant: "destructive", title: "Select a Class", description: "Please select a class before starting a session." });
-      return;
-    }
-    setSessionDate(format(new Date(), "yyyy-MM-dd"));
-    setSessionActive(true);
-  };
   
   const handleEndSession = () => {
     setSessionActive(false);
+    setSelectedClassId(null);
+    setSessionDate("");
+    toast({
+        title: "Session Ended",
+        description: "You can select a new class to start another session.",
+    })
   };
 
   useEffect(() => {
@@ -209,11 +216,11 @@ export default function AttendancePage() {
       <div className="lg:col-span-3 space-y-4">
         <Card>
             <CardHeader>
-                <CardTitle>Start Attendance Session</CardTitle>
-                <CardDescription>Select a class and start taking attendance.</CardDescription>
+                <CardTitle>Take Attendance</CardTitle>
+                <CardDescription>Select a class to start an attendance session.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-                 <Select onValueChange={setSelectedClassId} disabled={sessionActive || isLoadingClasses}>
+                 <Select onValueChange={handleClassSelection} disabled={sessionActive || isLoadingClasses} value={selectedClassId || ""}>
                     <SelectTrigger className="w-full sm:w-[280px]">
                         <SelectValue placeholder={isLoadingClasses ? "Loading classes..." : "Select a class"} />
                     </SelectTrigger>
@@ -222,8 +229,7 @@ export default function AttendancePage() {
                     </SelectContent>
                 </Select>
                 <div className="flex gap-2">
-                    <Button onClick={handleStartSession} disabled={sessionActive || !selectedClassId}><PlayCircle /> Start</Button>
-                    <Button onClick={handleEndSession} disabled={!sessionActive} variant="destructive"><StopCircle/> End</Button>
+                    <Button onClick={handleEndSession} disabled={!sessionActive} variant="destructive"><StopCircle/> End Session</Button>
                 </div>
             </CardContent>
         </Card>
@@ -238,7 +244,7 @@ export default function AttendancePage() {
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
-                        <p className="mt-4 text-muted-foreground">Session not active</p>
+                        <p className="mt-4 text-muted-foreground">Select a class to start</p>
                     </div>
                 )}
             </div>
@@ -320,3 +326,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
