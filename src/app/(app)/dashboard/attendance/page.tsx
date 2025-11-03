@@ -36,6 +36,10 @@ const scannerConfig = {
   ]
 };
 
+type ScanResult = {
+    status: "success" | "not_found" | "already_marked" | "error";
+    message: string;
+}
 
 export default function AttendancePage() {
   const { toast } = useToast();
@@ -46,6 +50,7 @@ export default function AttendancePage() {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [sessionDate, setSessionDate] = useState<string>("");
   const [manualRegNumber, setManualRegNumber] = useState("");
+  const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -84,6 +89,7 @@ export default function AttendancePage() {
     setSelectedClassId(classId);
     setSessionDate(format(new Date(), "yyyy-MM-dd"));
     setSessionActive(true);
+    setLastScanResult(null);
     toast({
         title: "Session Started",
         description: "You can now start taking attendance.",
@@ -101,11 +107,13 @@ export default function AttendancePage() {
     }
 
     if (!student) {
-      toast({ variant: "destructive", title: "Student Not Found", description: "This student is not enrolled in the selected class." });
-      return;
+        setLastScanResult({ status: 'not_found', message: `Student with identifier "${studentIdentifier}" not found in this class.` });
+        toast({ variant: "destructive", title: "Student Not Found", description: "This student is not enrolled in the selected class." });
+        return;
     }
 
     if (presentStudentIds.has(student.id)) {
+        setLastScanResult({ status: 'already_marked', message: `${student.name} is already marked as present.` });
         toast({ title: "Already Marked", description: `${student.name} is already marked as present.` });
         return;
     }
@@ -144,6 +152,7 @@ export default function AttendancePage() {
         }
     });
 
+    setLastScanResult({ status: 'success', message: `${student.name} has been marked present.` });
     toast({
       title: "Attendance Marked",
       description: `${student.name} has been marked as present.`,
@@ -156,6 +165,7 @@ export default function AttendancePage() {
     setSessionActive(false);
     setSelectedClassId(null);
     setSessionDate("");
+    setLastScanResult(null);
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
@@ -254,7 +264,7 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className="w-full h-full" />
+                <div id="reader" className={cn(!sessionActive && "opacity-0")} />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
@@ -262,6 +272,17 @@ export default function AttendancePage() {
                     </div>
                 )}
             </div>
+             {sessionActive && lastScanResult && (
+                <Alert className="mt-4" variant={lastScanResult.status === "success" ? "default" : "destructive"}>
+                    <AlertTitle>
+                        {lastScanResult.status === "success" && "Scan Successful"}
+                        {lastScanResult.status === "not_found" && "Student Not Found"}
+                        {lastScan_result.status === "already_marked" && "Already Marked"}
+                        {lastScanResult.status === "error" && "Scan Error"}
+                    </AlertTitle>
+                    <AlertDescription>{lastScanResult.message}</AlertDescription>
+                </Alert>
+            )}
 
             {sessionActive && hasCameraPermission === false && (
                 <Alert variant="destructive" className="mt-4">
