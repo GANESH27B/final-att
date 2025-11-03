@@ -27,24 +27,25 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const profileFormSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional(),
   email: z.string().email(),
   currentPassword: z.string().optional(),
   newPassword: z.string().optional(),
   confirmPassword: z.string().optional(),
 }).refine(data => {
-    if (data.newPassword && !data.currentPassword) {
-      return false;
+    // If user is trying to change password, all password fields are required
+    if (data.newPassword || data.confirmPassword) {
+      return !!data.currentPassword && !!data.newPassword && !!data.confirmPassword;
     }
     return true;
 }, {
-    message: "Current password is required to set a new password.",
-    path: ["currentPassword"],
+    message: "To change your password, you must provide your current password, a new password, and confirm it.",
+    path: ["currentPassword"], // You can decide where to show this general message
 }).refine(data => data.newPassword === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: "New passwords don't match",
   path: ["confirmPassword"],
 });
 
@@ -70,6 +71,15 @@ export default function ProfilePage() {
     mode: "onChange"
   });
 
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        name: user.displayName || "",
+        email: user.email || "",
+      });
+    }
+  }, [user, form]);
+
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user || !auth || !firestore) {
       toast({ variant: "destructive", title: "Error", description: "User not logged in or Firebase not initialized." });
@@ -77,15 +87,18 @@ export default function ProfilePage() {
     }
     setIsPending(true);
 
+    let profileUpdated = false;
+    let passwordUpdated = false;
+
     try {
-      // Update display name if it has changed
-      if (user.displayName !== data.name) {
+      // Update display name if it has changed and is provided
+      if (data.name && user.displayName !== data.name) {
         await updateProfile(user, { displayName: data.name });
 
         const userDocRef = doc(firestore, "users", user.uid);
         const userData = { name: data.name };
         
-        setDoc(userDocRef, userData, { merge: true }).catch(error => {
+        await setDoc(userDocRef, userData, { merge: true }).catch(error => {
             if (error.code === 'permission-denied') {
                 const permissionError = new FirestorePermissionError({
                     path: userDocRef.path,
@@ -93,8 +106,12 @@ export default function ProfilePage() {
                     requestResourceData: userData,
                 });
                 errorEmitter.emit('permission-error', permissionError);
+                // re-throw to be caught by outer catch block
+                throw permissionError; 
             }
+            throw error;
         });
+        profileUpdated = true;
       }
 
       // Update password if a new one is provided
@@ -103,12 +120,21 @@ export default function ProfilePage() {
         // Re-authenticate before updating password for security
         await reauthenticateWithCredential(user, credential);
         await updatePassword(user, data.newPassword);
+        passwordUpdated = true;
+      }
+      
+      if(profileUpdated || passwordUpdated) {
+        toast({
+            title: "Profile Updated",
+            description: "Your information has been successfully updated.",
+        });
+      } else {
+        toast({
+            title: "No Changes",
+            description: "You haven't made any changes to your profile.",
+        });
       }
 
-      toast({
-        title: "Profile Updated",
-        description: "Your profile information has been successfully updated.",
-      });
 
     } catch (error: any) {
       toast({
@@ -119,7 +145,7 @@ export default function ProfilePage() {
     } finally {
       setIsPending(false);
       form.reset({
-        ...data,
+        ...form.getValues(),
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
