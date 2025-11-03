@@ -91,7 +91,7 @@ service cloud.firestore {
       // but the application logic should be the primary driver of correctness.
       match /attendance/{attendanceId} {
         allow read, list: if isOwner(userId);
-        allow write: if isOwner(userId) || isFaculty();
+        allow write: if isOwner(userId) || isClassOwner(request.resource.data.classId);
       }
     }
     
