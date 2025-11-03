@@ -25,7 +25,7 @@ import { ArrowLeft, MoreHorizontal, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AddStudentDialog } from './components/add-student-dialog';
-import { useState } from 'react';
+import { useState, use } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +37,8 @@ import {
 import { EditStudentDialog } from './components/edit-student-dialog';
 import { RemoveStudentDialog } from './components/remove-student-dialog';
 
-export default function ManageClassPage({ params }: { params: { classId: string } }) {
+export default function ManageClassPage({ params: paramsProp }: { params: { classId: string } }) {
+  const params = use(Promise.resolve(paramsProp));
   const firestore = useFirestore();
   const classId = params.classId;
 
