@@ -1,7 +1,7 @@
 // Using client directive for form interactivity and hooks
 "use client";
 
-import { useActionState, useEffect, useMemo } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -40,7 +40,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { useFormStatus } from "react-dom";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
@@ -62,20 +61,13 @@ const visualizationOptions = [
   { id: "line", label: "Line Graph" },
 ] as const;
 
-type ActionState = {
-  data: AttendanceInsightsOutput | null;
-  errors?: z.ZodIssue[];
-  message?: string;
-};
 
 export default function AnalyticsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
 
-  const [state, formAction, isPending] = useActionState(handleGenerateReport, {
-    data: null,
-    errors: [],
-  });
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<AttendanceInsightsOutput | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -102,60 +94,32 @@ export default function AnalyticsPage() {
 
   const analysisType = form.watch("analysisType");
   
-  useEffect(() => {
-    if (state.errors && state.errors.length > 0) {
-      toast({
-        variant: "destructive",
-        title: "Validation Error",
-        description: state.message || "Please check the form for errors.",
-      });
-      state.errors.forEach((error) => {
-        form.setError(error.path[0] as keyof FormValues, {
-          message: error.message,
+
+  const onSubmit = (values: FormValues) => {
+    startTransition(async () => {
+      try {
+        setResult(null);
+        const insights = await generateAttendanceInsights({
+          attendanceData: JSON.stringify({ message: "Dummy attendance data for " + values.targetId }),
+          analysisPreferences: `Focus on ${values.analysisType}`,
+          reportFormat: values.reportFormat,
+          visualizationTypes: values.visualizationTypes as ('bar' | 'pie' | 'line')[],
         });
-      });
-    }
-     if (!state.errors && state.message) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: state.message,
-      });
-    }
-  }, [state, form, toast]);
-
-  async function handleGenerateReport(
-    _prevState: ActionState,
-    formData: FormData
-  ): Promise<ActionState> {
-    const data = {
-      analysisType: formData.get('analysisType'),
-      targetId: formData.get('targetId'),
-      reportFormat: formData.get('reportFormat'),
-      visualizationTypes: formData.getAll('visualizationTypes')
-    };
-
-    const parsed = formSchema.safeParse(data);
-
-    if (!parsed.success) {
-        return { data: null, errors: parsed.error.issues, message: "Invalid form data." };
-    }
-
-    try {
-      // Dummy data for now. In a real scenario, you'd fetch based on parsed.data
-      const result = await generateAttendanceInsights({
-        attendanceData: JSON.stringify({ message: "Dummy attendance data for " + parsed.data.targetId }),
-        analysisPreferences: `Focus on ${parsed.data.analysisType}`,
-        reportFormat: parsed.data.reportFormat,
-        visualizationTypes: parsed.data.visualizationTypes as ('bar' | 'pie' | 'line')[],
-      });
-      // On success, reset form fields or show success message
-      return { data: result, errors: [] };
-    } catch (e: any) {
-      console.error(e);
-      return { data: null, errors: [], message: e.message || "An unexpected error occurred." };
-    }
-  }
+        setResult(insights);
+        toast({
+          title: "Report Generated",
+          description: "Your AI-powered insights are ready.",
+        });
+      } catch (e: any) {
+        console.error(e);
+        toast({
+          variant: "destructive",
+          title: "Generation Failed",
+          description: e.message || "An unexpected error occurred.",
+        });
+      }
+    });
+  };
 
   const isLoading = isLoadingClasses || isLoadingUsers;
   const currentSelectionData = analysisType === 'class' ? classesData : (analysisType === 'student' ? students : faculty);
@@ -170,7 +134,7 @@ export default function AnalyticsPage() {
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form action={formAction}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
@@ -281,7 +245,6 @@ export default function AnalyticsPage() {
                                     <FormControl>
                                     <Checkbox
                                         value={item.id}
-                                        name="visualizationTypes"
                                         checked={field.value?.includes(item.id)}
                                         onCheckedChange={(checked) => {
                                         const updatedValue = checked
@@ -309,7 +272,9 @@ export default function AnalyticsPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <SubmitButton isPending={isPending} />
+               <Button type="submit" disabled={isPending}>
+                 {isPending ? <Loader2 className="animate-spin" /> : "Generate Report"}
+               </Button>
             </CardFooter>
           </form>
         </Form>
@@ -322,7 +287,7 @@ export default function AnalyticsPage() {
               </CardContent>
           </Card>
       )}
-      {state.data && !isPending && (
+      {result && !isPending && (
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bot /> Generated Insights</CardTitle>
@@ -331,19 +296,19 @@ export default function AnalyticsPage() {
             <CardContent className="space-y-4">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><FileText /> Report</h3>
-                    <a href="#" onClick={(e) => { e.preventDefault(); alert("This is a mock download link for: " + state.data?.report);}} className="text-sm text-primary hover:underline">{`Download Report (${state.data.report})`}</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); alert("This is a mock download link for: " + result?.report);}} className="text-sm text-primary hover:underline">{`Download Report (${result.report})`}</a>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><ImageIcon /> Visualizations</h3>
                     <div className="text-sm text-muted-foreground flex flex-col space-y-1 mt-2">
-                        {state.data.visualizations.map((vis, i) => <a href="#" key={i} onClick={(e) => {e.preventDefault(); alert("This is a mock visualization link.")}} className="hover:underline">{vis}</a>)}
+                        {result.visualizations.map((vis, i) => <a href="#" key={i} onClick={(e) => {e.preventDefault(); alert("This is a mock visualization link.")}} className="hover:underline">{vis}</a>)}
                     </div>
                 </div>
                 <Separator/>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2"><Lightbulb /> Key Insights</h3>
-                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap font-code">{state.data.insights}</p>
+                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap font-code">{result.insights}</p>
                 </div>
             </CardContent>
         </Card>
@@ -351,15 +316,3 @@ export default function AnalyticsPage() {
     </div>
   );
 }
-
-function SubmitButton({isPending}: {isPending: boolean}) {
-    const { pending } = useFormStatus();
-    const disabled = pending || isPending;
-    return (
-        <Button type="submit" disabled={disabled}>
-            {disabled ? <Loader2 className="animate-spin" /> : "Generate Report"}
-        </Button>
-    )
-}
-
-    
