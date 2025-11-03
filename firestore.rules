@@ -86,10 +86,11 @@ service cloud.firestore {
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
 
-      // Students can only access their own attendance subcollection.
+      // Students can only read/list their own attendance.
+      // Faculty can write attendance if they are the owner of the class being recorded.
       match /attendance/{attendanceId} {
-        allow read, write: if isOwner(userId) || isClassOwner(request.resource.data.classId);
-        allow list: if isOwner(userId);
+        allow read, list: if isOwner(userId);
+        allow write: if isOwner(userId) || (isFaculty() && isClassOwner(request.resource.data.classId));
       }
     }
     
@@ -146,5 +147,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

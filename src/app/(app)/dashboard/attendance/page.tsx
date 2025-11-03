@@ -137,7 +137,7 @@ export default function AttendancePage() {
         await batch.commit();
     } catch (error: any) {
         if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write' });
+          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write', requestResourceData: { classId: selectedClassId } });
           errorEmitter.emit('permission-error', permissionError);
         } else {
             toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
