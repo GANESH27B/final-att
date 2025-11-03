@@ -10,10 +10,10 @@ import {
 import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
-import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
 import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from 'date-fns';
 
@@ -45,53 +45,53 @@ export default function FacultyDashboardPage() {
     const [studentCount, setStudentCount] = useState(0);
     const [isLoadingStudentCount, setIsLoadingStudentCount] = useState(true);
 
-    const fetchStudentCount = useCallback(async () => {
-        if (!firestore || !myClasses) return;
-        setIsLoadingStudentCount(true);
-        if (myClasses.length === 0) {
-            setStudentCount(0);
-            setIsLoadingStudentCount(false);
-            return;
-        }
-
-        try {
-            let totalStudents = new Set<string>();
-            const studentCountPromises = myClasses.map(cls => 
-                getDocs(collection(firestore, `classes/${cls.id}/students`))
-            );
-            const allStudentSnaps = await Promise.all(studentCountPromises);
-            allStudentSnaps.forEach(studentsSnap => {
-                studentsSnap.forEach(doc => totalStudents.add(doc.id));
-            });
-            setStudentCount(totalStudents.size);
-        } catch (error: any) {
-             if (error.code === 'permission-denied') {
-                const permissionError = new FirestorePermissionError({
-                    path: 'classes/{classId}/students (multiple)',
-                    operation: 'list',
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            } else {
-                console.error("Error fetching student count:", error);
-            }
-            setStudentCount(0);
-        } finally {
-            setIsLoadingStudentCount(false);
-        }
-    }, [firestore, myClasses]);
-
     useEffect(() => {
-        if (myClasses) {
+        const fetchStudentCount = async () => {
+            if (!firestore || !myClasses) {
+                 if (!isLoadingClasses) {
+                    // If classes are done loading and there are none, count is 0.
+                    setStudentCount(0);
+                    setIsLoadingStudentCount(false);
+                }
+                return;
+            };
+            
+            setIsLoadingStudentCount(true);
+            if (myClasses.length === 0) {
+                setStudentCount(0);
+                setIsLoadingStudentCount(false);
+                return;
+            }
+
+            try {
+                let totalStudents = new Set<string>();
+                const studentCountPromises = myClasses.map(cls => 
+                    getDocs(collection(firestore, `classes/${cls.id}/students`))
+                );
+                const allStudentSnaps = await Promise.all(studentCountPromises);
+                allStudentSnaps.forEach(studentsSnap => {
+                    studentsSnap.forEach(doc => totalStudents.add(doc.id));
+                });
+                setStudentCount(totalStudents.size);
+            } catch (error) {
+                console.error("Error fetching student count:", error);
+                setStudentCount(0);
+            } finally {
+                setIsLoadingStudentCount(false);
+            }
+        };
+
+        // Only run fetchStudentCount if myClasses is defined (i.e., not null)
+        if (myClasses !== null) {
             fetchStudentCount();
-        } else if (!isLoadingClasses) {
-            setIsLoadingStudentCount(false);
         }
-    }, [myClasses, isLoadingClasses, fetchStudentCount]);
+    }, [firestore, myClasses, isLoadingClasses]);
+
 
     const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudentCount;
 
     const stats = useMemo(() => {
-        if (!myClasses) {
+        if (!myClasses || !attendance) {
             return {
                 totalStudents: 0,
                 totalClasses: 0,
@@ -105,6 +105,7 @@ export default function FacultyDashboardPage() {
         const presentCount = attendance?.filter(a => a.status === 'Present').length || 0;
         const avgAttendance = attendance && attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
         
+        // This is mock data, should be replaced with real scheduling logic
         const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
 
         return {
@@ -281,3 +282,5 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
+
+    
