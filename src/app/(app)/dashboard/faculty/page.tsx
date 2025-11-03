@@ -10,12 +10,7 @@ import {
 import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where, collectionGroup } from "firebase/firestore";
-import { Class, AttendanceRecord } from "@/lib/types";
-import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, parseISO } from 'date-fns';
 
 const chartConfig = {
   attendance: {
@@ -25,104 +20,27 @@ const chartConfig = {
 };
 
 export default function FacultyDashboardPage() {
-    const firestore = useFirestore();
-    const { user } = useUser();
+    const isLoading = false; // Using static data
 
-    const facultyClassesQuery = useMemoFirebase(() => 
-        firestore && user ? query(collection(firestore, 'classes'), where('facultyId', '==', user.uid)) : null,
-        [firestore, user]
-    );
-
-    const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
-
-    const attendanceQuery = useMemoFirebase(() => {
-        if (!firestore || !user?.uid) return null;
-        return query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid));
-    }, [firestore, user?.uid]);
-
-    const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+    const stats = {
+        totalClasses: 3,
+        avgAttendance: 88.5,
+        upcomingClass: "CS 101"
+    };
     
-    const isLoading = isLoadingClasses || isLoadingAttendance;
+    const myClassAttendanceData = [
+        { name: 'CS 101', attendance: 92, fill: `hsl(var(--chart-1))` },
+        { name: 'Math 203', attendance: 85, fill: `hsl(var(--chart-2))` },
+        { name: 'Art 100', attendance: 95, fill: `hsl(var(--chart-3))` },
+    ];
 
-    const stats = useMemo(() => {
-        if (!myClasses || !attendance) {
-            return {
-                totalClasses: 0,
-                avgAttendance: 0,
-                upcomingClass: "N/A"
-            };
-        }
-
-        const totalClasses = myClasses.length;
-
-        const presentCount = attendance?.filter(a => a.status === 'Present').length || 0;
-        const avgAttendance = attendance && attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
-        
-        const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
-
-        return {
-            totalClasses,
-            avgAttendance,
-            upcomingClass
-        };
-    }, [myClasses, attendance]);
-    
-    const myClassAttendanceData = useMemo(() => {
-        if (!myClasses || myClasses.length === 0 || !attendance) return [];
-    
-        return myClasses.map((cls, index) => {
-            const relevantAttendance = attendance.filter(a => a.classId === cls.id);
-            if (relevantAttendance.length === 0) {
-                return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
-            }
-            const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
-            const avg = (presentCount / relevantAttendance.length) * 100;
-            const fill = `hsl(var(--chart-${(index % 5) + 1}))`;
-
-            // Dynamically update chart config for tooltips
-            const key = cls.name.replace(/\s+/g, '').toLowerCase();
-            if (!(chartConfig as any)[key]) {
-                (chartConfig as any)[key] = { label: cls.name, color: fill };
-            }
-
-            return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill };
-        });
-    
-    }, [myClasses, attendance]);
-
-    const myOverallAttendanceData = useMemo(() => {
-        if (!attendance || attendance.length === 0) return [];
-
-        const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
-
-        attendance.forEach(record => {
-            try {
-                const month = format(parseISO(record.date), 'MMM');
-                if (!attendanceByMonth[month]) {
-                    attendanceByMonth[month] = { present: 0, total: 0 };
-                }
-                attendanceByMonth[month].total++;
-                if (record.status === 'Present') {
-                    attendanceByMonth[month].present++;
-                }
-            } catch (e) {
-                console.warn(`Invalid date format for record ${record.id}: ${record.date}`);
-            }
-        });
-
-        const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-        return monthOrder
-            .filter(month => attendanceByMonth[month])
-            .map(month => {
-                const { present, total } = attendanceByMonth[month];
-                return {
-                    date: month,
-                    attendance: parseFloat(((present / total) * 100).toFixed(1)),
-                };
-            });
-
-    }, [attendance]);
+    const myOverallAttendanceData = [
+      { date: 'Jan', attendance: 80 },
+      { date: 'Feb', attendance: 82 },
+      { date: 'Mar', attendance: 78 },
+      { date: 'Apr', attendance: 85 },
+      { date: 'May', attendance: 90 },
+    ];
 
 
   return (
