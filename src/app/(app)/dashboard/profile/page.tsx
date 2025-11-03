@@ -34,7 +34,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const profileFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional(),
   email: z.string().email(),
-  photo: z.any().optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().optional(),
   confirmPassword: z.string().optional(),
@@ -65,8 +64,7 @@ export default function ProfilePage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const [isPending, setIsPending] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-
+  
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
@@ -85,20 +83,9 @@ export default function ProfilePage() {
         name: user.displayName || "",
         email: user.email || "",
       });
-      setPhotoPreview(user.photoURL);
     }
   }, [user, form]);
   
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user || !auth || !firestore) {
@@ -109,6 +96,10 @@ export default function ProfilePage() {
 
     let profileUpdated = false;
     let passwordUpdated = false;
+    
+    // Create a new avatar URL on every profile update to give the user a way to change it.
+    const newAvatarUrl = `https://picsum.photos/seed/${user.uid}/${Date.now()}/40/40`;
+
 
     try {
       // Collect updates
@@ -121,11 +112,10 @@ export default function ProfilePage() {
         profileUpdated = true;
       }
       
-      if (photoPreview && user.photoURL !== photoPreview) {
-        profileUpdates.photoURL = photoPreview;
-        firestoreUpdates.avatarUrl = photoPreview;
-        profileUpdated = true;
-      }
+      // We always update the avatar to a new random one on profile save.
+      profileUpdates.photoURL = newAvatarUrl;
+      firestoreUpdates.avatarUrl = newAvatarUrl;
+      profileUpdated = true;
 
       if (profileUpdated) {
         await updateProfile(user, profileUpdates);
@@ -147,7 +137,12 @@ export default function ProfilePage() {
 
       // Update password if a new one is provided
       if (data.newPassword && data.currentPassword) {
-        const credential = EmailAuthProvider.credential(user.email!, data.currentPassword);
+        if (!user.email) {
+            toast({ variant: "destructive", title: "Update Failed", description: "Cannot change password without a user email." });
+            setIsPending(false);
+            return;
+        }
+        const credential = EmailAuthProvider.credential(user.email, data.currentPassword);
         await reauthenticateWithCredential(user, credential);
         await updatePassword(user, data.newPassword);
         passwordUpdated = true;
@@ -197,33 +192,22 @@ export default function ProfilePage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6">
-            <FormField
-                control={form.control}
-                name="photo"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Profile Photo</FormLabel>
-                        <FormControl>
-                            <div className="flex items-center gap-4">
-                                <Avatar className="h-20 w-20">
-                                    <AvatarImage src={photoPreview || undefined} alt="User avatar" />
-                                    <AvatarFallback>{getFallback()}</AvatarFallback>
-                                </Avatar>
-                                <Input 
-                                    type="file" 
-                                    accept="image/*"
-                                    className="max-w-xs"
-                                    onChange={(e) => {
-                                        field.onChange(e.target.files);
-                                        handlePhotoChange(e);
-                                    }}
-                                />
-                            </div>
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
+             <FormItem>
+                <FormLabel>Profile Photo</FormLabel>
+                <FormControl>
+                    <div className="flex items-center gap-4">
+                        <Avatar className="h-20 w-20">
+                            <AvatarImage src={user?.photoURL || undefined} alt="User avatar" />
+                            <AvatarFallback>{getFallback()}</AvatarFallback>
+                        </Avatar>
+                        <FormDescription>
+                            Your avatar is updated automatically when you save your profile.
+                        </FormDescription>
+                    </div>
+                </FormControl>
+                <FormMessage />
+            </FormItem>
+
             <FormField
               control={form.control}
               name="name"
@@ -306,6 +290,3 @@ export default function ProfilePage() {
     </Card>
   );
 }
-
-
-    
