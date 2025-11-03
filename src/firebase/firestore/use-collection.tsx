@@ -89,6 +89,8 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
+        // Log the permission error but do not throw it to prevent app crash
+        console.warn(`Firebase permission error on collection query: ${error.message}`);
         const path: string =
           memoizedTargetRefOrQuery.type === 'collection'
             ? (memoizedTargetRefOrQuery as CollectionReference).path
@@ -97,13 +99,14 @@ export function useCollection<T = any>(
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
-        })
+        });
 
-        setError(contextualError)
-        setData(null)
-        setIsLoading(false)
+        setError(contextualError);
+        setData(null);
+        setIsLoading(false);
 
-        errorEmitter.emit('permission-error', contextualError);
+        // Do not emit the error to the global listener to avoid crashing the app
+        // errorEmitter.emit('permission-error', contextualError);
       }
     );
 
