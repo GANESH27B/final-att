@@ -18,7 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { Class, User as UserType } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, MoreHorizontal, User as UserIcon } from 'lucide-react';
@@ -47,24 +47,28 @@ export default function ManageClassPage({ params }: { params: { classId: string 
 
   // Memoized Firestore references
   const classDocRef = useMemoFirebase(() => (firestore && classId ? doc(firestore, 'classes', classId) : null), [firestore, classId]);
-  const allStudentsCollectionRef = useMemoFirebase(() => (firestore ? collection(firestore, 'users') : null), [firestore]);
+  
+  // Securely query for only student users
+  const allStudentsQuery = useMemoFirebase(() => 
+    (firestore ? query(collection(firestore, 'users'), where('role', '==', 'student')) : null), 
+    [firestore]
+  );
+  
   const enrolledStudentsCollectionRef = useMemoFirebase(() => (firestore && classId ? collection(firestore, `classes/${classId}/students`) : null), [firestore, classId]);
 
   // Data fetching hooks
   const { data: classData, isLoading: isLoadingClass } = useDoc<Class>(classDocRef);
-  const { data: allUsers, isLoading: isLoadingAllUsers } = useCollection<UserType>(allStudentsCollectionRef);
+  const { data: allStudents, isLoading: isLoadingAllStudents } = useCollection<UserType>(allStudentsQuery);
   const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<UserType>(enrolledStudentsCollectionRef);
   
   const facultyDocRef = useMemoFirebase(() => (firestore && classData?.facultyId ? doc(firestore, 'users', classData.facultyId) : null), [firestore, classData?.facultyId]);
   const { data: facultyData, isLoading: isLoadingFaculty } = useDoc<UserType>(facultyDocRef);
 
-  const isLoading = isLoadingClass || isLoadingFaculty || isLoadingEnrolled || isLoadingAllUsers;
-
-  const allStudents = allUsers?.filter(u => u.role === 'student') || [];
+  const isLoading = isLoadingClass || isLoadingFaculty || isLoadingEnrolled || isLoadingAllStudents;
   
-  const unEnrolledStudents = allStudents.filter(
+  const unEnrolledStudents = allStudents?.filter(
     (student) => !enrolledStudents?.some((enrolled) => enrolled.id === student.id)
-  );
+  ) || [];
 
   const handleEdit = (student: UserType) => {
     setSelectedStudent(student);
