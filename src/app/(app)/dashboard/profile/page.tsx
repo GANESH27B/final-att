@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -28,23 +29,29 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional(),
   email: z.string().email(),
+  photo: z.any().optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().optional(),
   confirmPassword: z.string().optional(),
 }).refine(data => {
-    // If user is trying to change password, all password fields are required
-    if (data.newPassword || data.confirmPassword) {
+    if (data.newPassword || data.confirmPassword || data.currentPassword) {
       return !!data.currentPassword && !!data.newPassword && !!data.confirmPassword;
     }
     return true;
 }, {
     message: "To change your password, you must provide your current password, a new password, and confirm it.",
-    path: ["currentPassword"], // You can decide where to show this general message
-}).refine(data => data.newPassword === data.confirmPassword, {
+    path: ["currentPassword"], 
+}).refine(data => {
+    if (data.newPassword) {
+        return data.newPassword === data.confirmPassword;
+    }
+    return true;
+}, {
   message: "New passwords don't match",
   path: ["confirmPassword"],
 });
@@ -58,6 +65,7 @@ export default function ProfilePage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const [isPending, setIsPending] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -77,8 +85,20 @@ export default function ProfilePage() {
         name: user.displayName || "",
         email: user.email || "",
       });
+      setPhotoPreview(user.photoURL);
     }
   }, [user, form]);
+  
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user || !auth || !firestore) {
@@ -91,33 +111,43 @@ export default function ProfilePage() {
     let passwordUpdated = false;
 
     try {
-      // Update display name if it has changed and is provided
-      if (data.name && user.displayName !== data.name) {
-        await updateProfile(user, { displayName: data.name });
+      // Collect updates
+      const profileUpdates: { displayName?: string, photoURL?: string } = {};
+      const firestoreUpdates: { name?: string, avatarUrl?: string } = {};
 
-        const userDocRef = doc(firestore, "users", user.uid);
-        const userData = { name: data.name };
+      if (data.name && user.displayName !== data.name) {
+        profileUpdates.displayName = data.name;
+        firestoreUpdates.name = data.name;
+        profileUpdated = true;
+      }
+      
+      if (photoPreview && user.photoURL !== photoPreview) {
+        profileUpdates.photoURL = photoPreview;
+        firestoreUpdates.avatarUrl = photoPreview;
+        profileUpdated = true;
+      }
+
+      if (profileUpdated) {
+        await updateProfile(user, profileUpdates);
         
-        await setDoc(userDocRef, userData, { merge: true }).catch(error => {
+        const userDocRef = doc(firestore, "users", user.uid);
+        await setDoc(userDocRef, firestoreUpdates, { merge: true }).catch(error => {
             if (error.code === 'permission-denied') {
                 const permissionError = new FirestorePermissionError({
                     path: userDocRef.path,
                     operation: 'update',
-                    requestResourceData: userData,
+                    requestResourceData: firestoreUpdates,
                 });
                 errorEmitter.emit('permission-error', permissionError);
-                // re-throw to be caught by outer catch block
                 throw permissionError; 
             }
             throw error;
         });
-        profileUpdated = true;
       }
 
       // Update password if a new one is provided
       if (data.newPassword && data.currentPassword) {
         const credential = EmailAuthProvider.credential(user.email!, data.currentPassword);
-        // Re-authenticate before updating password for security
         await reauthenticateWithCredential(user, credential);
         await updatePassword(user, data.newPassword);
         passwordUpdated = true;
@@ -134,7 +164,6 @@ export default function ProfilePage() {
             description: "You haven't made any changes to your profile.",
         });
       }
-
 
     } catch (error: any) {
       toast({
@@ -153,6 +182,12 @@ export default function ProfilePage() {
     }
   };
 
+  const getFallback = () => {
+    if (user?.displayName) return user.displayName.substring(0, 2).toUpperCase();
+    if (user?.email) return user.email.substring(0, 2).toUpperCase();
+    return "AU";
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -162,6 +197,33 @@ export default function ProfilePage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6">
+            <FormField
+                control={form.control}
+                name="photo"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Profile Photo</FormLabel>
+                        <FormControl>
+                            <div className="flex items-center gap-4">
+                                <Avatar className="h-20 w-20">
+                                    <AvatarImage src={photoPreview || undefined} alt="User avatar" />
+                                    <AvatarFallback>{getFallback()}</AvatarFallback>
+                                </Avatar>
+                                <Input 
+                                    type="file" 
+                                    accept="image/*"
+                                    className="max-w-xs"
+                                    onChange={(e) => {
+                                        field.onChange(e.target.files);
+                                        handlePhotoChange(e);
+                                    }}
+                                />
+                            </div>
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
             <FormField
               control={form.control}
               name="name"
@@ -244,3 +306,6 @@ export default function ProfilePage() {
     </Card>
   );
 }
+
+
+    
