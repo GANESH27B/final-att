@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { User, Users } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
@@ -66,24 +66,18 @@ export default function ClassManagementPage() {
   [firestore, user]);
   const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
   
-  // This hook now only fetches ALL users if the current user is an admin
-  const allUsersQuery = useMemoFirebase(() => 
-    firestore && user?.role === 'admin' ? collection(firestore, 'users') : null,
-  [firestore, user]);
-  const { data: allUsers, isLoading: isLoadingAllUsers } = useCollection<UserType>(allUsersQuery);
-
   const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
   
   const facultyMap = useMemo(() => {
-    if (user?.role === 'admin' && allUsers) {
-      return new Map(allUsers.filter(u => u.role === 'faculty').map(f => [f.id, f.name]));
+    if (user?.role === 'admin' && faculty) {
+      return new Map(faculty.map(f => [f.id, f.name]));
     }
     if (user?.role === 'faculty' && user) {
         return new Map([[user.id, user.name]]);
     }
     return new Map();
-  }, [user, allUsers]);
+  }, [user, faculty]);
 
 
   const fetchStudentCounts = useCallback(async () => {
@@ -106,7 +100,7 @@ export default function ClassManagementPage() {
 
   useEffect(() => {
     const processClasses = async () => {
-        if (!classes || isUserLoadingAuth || isLoadingUserRole || (user?.role === 'admin' && isLoadingAllUsers)) {
+        if (!classes || isUserLoadingAuth || isLoadingUserRole || (user?.role === 'admin' && isLoadingFaculty)) {
              setIsProcessing(true);
              return;
         }
@@ -123,7 +117,7 @@ export default function ClassManagementPage() {
         setIsProcessing(false);
     };
     processClasses();
-  }, [classes, facultyMap, fetchStudentCounts, isUserLoadingAuth, isLoadingUserRole, user, isLoadingAllUsers]);
+  }, [classes, facultyMap, fetchStudentCounts, isUserLoadingAuth, isLoadingUserRole, user, isLoadingFaculty]);
   
   const finalIsLoading = isUserLoadingAuth || isLoadingUserRole || isLoadingClasses || isProcessing;
   
@@ -200,5 +194,3 @@ export default function ClassManagementPage() {
     </div>
   );
 }
-
-    
