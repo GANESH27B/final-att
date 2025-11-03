@@ -10,7 +10,7 @@ import {
 import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
 import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -38,26 +38,34 @@ export default function FacultyDashboardPage() {
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
 
-    const fetchAttendanceForClasses = useCallback(async () => {
-        if (!firestore || !myClasses) return;
+    const fetchAttendanceForClasses = useCallback(() => {
+        if (!firestore || !myClasses || !user?.uid) return;
 
         setIsLoadingAttendance(true);
-        try {
-            if (myClasses.length === 0) {
-                setAttendance([]);
-                return;
-            }
-            // A collection group query is more efficient if the user is a member of many classes.
-            const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user?.uid));
-            const attendanceSnap = await getDocs(attendanceQuery);
-            const allAttendance: AttendanceRecord[] = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-            setAttendance(allAttendance);
-        } catch (error) {
-            console.error("Error fetching attendance data:", error);
+        if (myClasses.length === 0) {
             setAttendance([]);
-        } finally {
             setIsLoadingAttendance(false);
+            return;
         }
+
+        const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid));
+        
+        getDocs(attendanceQuery)
+            .then(attendanceSnap => {
+                const allAttendance: AttendanceRecord[] = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+                setAttendance(allAttendance);
+            })
+            .catch(error => {
+                const permissionError = new FirestorePermissionError({
+                    path: 'attendance (collection group)',
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+                setAttendance([]);
+            })
+            .finally(() => {
+                setIsLoadingAttendance(false);
+            });
     }, [firestore, myClasses, user?.uid]);
 
     useEffect(() => {
@@ -75,20 +83,33 @@ export default function FacultyDashboardPage() {
     const fetchStudentCount = useCallback(async () => {
         if (!firestore || !myClasses) return;
         setIsLoadingStudentCount(true);
+        if (myClasses.length === 0) {
+            setStudentCount(0);
+            setIsLoadingStudentCount(false);
+            return;
+        }
+
         try {
-            if (myClasses.length === 0) {
-                setStudentCount(0);
-                return;
-            }
             let totalStudents = new Set<string>();
-            for (const cls of myClasses) {
-                const studentsRef = collection(firestore, `classes/${cls.id}/students`);
-                const studentsSnap = await getDocs(studentsRef);
+            // This can be slow if there are many classes.
+            // Using Promise.all to fetch student counts in parallel.
+            const studentCountPromises = myClasses.map(cls => 
+                getDocs(collection(firestore, `classes/${cls.id}/students`))
+            );
+
+            const allStudentSnaps = await Promise.all(studentCountPromises);
+            
+            allStudentSnaps.forEach(studentsSnap => {
                 studentsSnap.forEach(doc => totalStudents.add(doc.id));
-            }
+            });
+
             setStudentCount(totalStudents.size);
         } catch (error) {
-            console.error("Error fetching student count: ", error);
+            const permissionError = new FirestorePermissionError({
+                path: 'classes/{classId}/students (multiple)',
+                operation: 'list',
+            });
+            errorEmitter.emit('permission-error', permissionError);
             setStudentCount(0);
         } finally {
             setIsLoadingStudentCount(false);
