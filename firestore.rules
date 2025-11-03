@@ -95,7 +95,7 @@ service cloud.firestore {
         // Read: Admins, the owning faculty, or an enrolled student can read a class doc.
         allow get: if isAdmin() || isClassOwner(classId) || exists(/databases/$(database)/documents/classes/$(classId)/students/$(request.auth.uid));
         
-        // List: Admins and Faculty can list classes they own. Students can list classes they are in.
+        // List: Admins and Faculty can list classes.
         allow list: if isAdmin() || isFaculty();
         
         // Write: Only Admins or the assigned faculty can create/update/delete.
@@ -133,5 +133,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
