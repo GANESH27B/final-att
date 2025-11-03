@@ -9,20 +9,13 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { User, Users } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
+import { collection, getDoc, query, where, doc } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-
-interface EnrichedClass extends Class {
-  facultyName: string;
-  studentCount: number;
-}
 
 export default function ClassManagementPage() {
   const firestore = useFirestore();
@@ -67,68 +60,7 @@ export default function ClassManagementPage() {
   [firestore, user]);
   const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
   
-  const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
-  const [isProcessing, setIsProcessing] = useState(true);
-  
-  const facultyMap = useMemo(() => {
-    const map = new Map<string, string>();
-    if (user?.role === 'admin' && faculty) {
-      faculty.forEach(f => map.set(f.id, f.name));
-    } else if (user?.role === 'faculty' && user) {
-      map.set(user.id, user.name);
-    }
-    return map;
-  }, [user, faculty]);
-
-
-  const fetchStudentCounts = useCallback(async () => {
-    if (!firestore || !classes || classes.length === 0) {
-       if (classes && classes.length === 0) return new Map<string, number>();
-       return null;
-    }
-
-    const counts = new Map<string, number>();
-    for (const cls of classes) {
-        try {
-            const studentsCollectionRef = collection(firestore, `classes/${cls.id}/students`);
-            const snapshot = await getDocs(studentsCollectionRef);
-            counts.set(cls.id, snapshot.size);
-        } catch (e) {
-            console.error(`Could not fetch student count for class ${cls.id}`, e);
-            counts.set(cls.id, 0);
-        }
-    }
-    return counts;
-  }, [firestore, classes]);
-
-
-  useEffect(() => {
-    const processClasses = async () => {
-        if (!classes || isUserLoadingAuth || isLoadingUserRole || (user?.role === 'admin' && isLoadingFaculty)) {
-             setIsProcessing(true);
-             return;
-        }
-
-        setIsProcessing(true);
-        const studentCounts = await fetchStudentCounts();
-
-        if (studentCounts === null) {
-          setIsProcessing(false);
-          return;
-        };
-
-        const enriched = classes.map(cls => ({
-            ...cls,
-            facultyName: facultyMap.get(cls.facultyId) || 'Unknown Faculty',
-            studentCount: studentCounts.get(cls.id) || 0,
-        }));
-        setEnrichedClasses(enriched);
-        setIsProcessing(false);
-    };
-    processClasses();
-  }, [classes, facultyMap, fetchStudentCounts, isUserLoadingAuth, isLoadingUserRole, user, isLoadingFaculty]);
-  
-  const finalIsLoading = isUserLoadingAuth || isLoadingUserRole || isLoadingClasses || isProcessing;
+  const finalIsLoading = isUserLoadingAuth || isLoadingUserRole || isLoadingClasses || (user?.role === 'admin' && isLoadingFaculty);
   
   return (
     <div className="space-y-4">
@@ -153,8 +85,7 @@ export default function ClassManagementPage() {
                         <Skeleton className="h-4 w-1/2" />
                     </CardHeader>
                     <CardContent>
-                        <Skeleton className="h-4 w-full mb-2" />
-                        <Skeleton className="h-4 w-2/3" />
+                       <div className="h-10" />
                     </CardContent>
                     <CardFooter>
                        <Skeleton className="h-10 w-full" />
@@ -164,9 +95,9 @@ export default function ClassManagementPage() {
          </div>
       ) : (
         <>
-          {enrichedClasses.length > 0 ? (
+          {classes && classes.length > 0 ? (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {enrichedClasses.map((cls) => (
+              {classes.map((cls) => (
                 <Card key={cls.id} className="flex flex-col h-full hover:bg-muted/50 transition-colors">
                   <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
                     <CardHeader>
@@ -174,14 +105,7 @@ export default function ClassManagementPage() {
                       <CardDescription>Section {cls.section}</CardDescription>
                     </CardHeader>
                     <CardContent className="flex-grow">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <User className="h-4 w-4" />
-                        <span>{cls.facultyName}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                        <Users className="h-4 w-4" />
-                        <span>{cls.studentCount} Students</span>
-                      </div>
+                      {/* Content removed for simplicity */}
                     </CardContent>
                     <CardFooter>
                         <p className="text-xs text-muted-foreground w-full text-center">Click to manage</p>
