@@ -18,8 +18,8 @@ import { Progress } from "@/components/ui/progress";
 import { LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
-import { AttendanceRecord, Class } from "@/lib/types";
+import { collectionGroup, query, where } from "firebase/firestore";
+import { AttendanceRecord } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
@@ -36,43 +36,29 @@ export default function MyAttendancePage() {
   const { user } = useUser();
 
   const studentAttendanceQuery = useMemoFirebase(() => 
-    firestore && user ? collection(firestore, `users/${user.uid}/attendance`) : null,
+    firestore && user ? query(collectionGroup(firestore, 'attendance'), where('studentId', '==', user.uid)) : null,
     [firestore, user]
   );
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
-  const enrolledClassIds = useMemo(() => {
-    if (!attendanceRecords) return [];
-    return [...new Set(attendanceRecords.map(r => r.classId))];
-  }, [attendanceRecords]);
-  
-  const classesQuery = useMemoFirebase(() => {
-    if (!firestore || enrolledClassIds.length === 0) return null;
-    // Firestore 'in' queries are limited to 30 elements.
-    // For a student enrolled in more, we'd need multiple queries.
-    // This is a simplification for now.
-    return query(collection(firestore, 'classes'), where('id', 'in', enrolledClassIds.slice(0, 30)));
-  }, [firestore, enrolledClassIds]);
-
-  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
-
-  const isLoading = isLoadingAttendance || (enrolledClassIds.length > 0 && isLoadingClasses);
-
-  const classMap = useMemo(() => {
-    if (!enrolledClasses) return new Map<string, Class>();
-    return new Map(enrolledClasses.map(c => [c.id, c]));
-  }, [enrolledClasses]);
+  const isLoading = isLoadingAttendance;
 
   const subjectWiseAttendance = useMemo(() => {
-    if (!attendanceRecords || !classMap.size) return [];
+    if (!attendanceRecords) return [];
 
-    const statsByClass: { [classId: string]: { attended: number, total: number } } = {};
+    const statsByClass: { [classId: string]: { name: string; attended: number; total: number } } = {};
     const uniqueDatesByClass: { [classId: string]: Set<string> } = {};
 
     attendanceRecords.forEach(record => {
       // Initialize if not present
       if (!uniqueDatesByClass[record.classId]) uniqueDatesByClass[record.classId] = new Set();
-      if (!statsByClass[record.classId]) statsByClass[record.classId] = { attended: 0, total: 0 };
+      if (!statsByClass[record.classId]) {
+        statsByClass[record.classId] = { 
+            name: record.className || `Class ${record.classId.slice(0,4)}`,
+            attended: 0, 
+            total: 0 
+        };
+      }
       
       uniqueDatesByClass[record.classId].add(record.date);
       if (record.status === 'Present') {
@@ -87,17 +73,16 @@ export default function MyAttendancePage() {
         }
     }
 
-    return Object.entries(statsByClass).map(([classId, stats]) => {
-      const classInfo = classMap.get(classId);
+    return Object.values(statsByClass).map(stats => {
       const percentage = stats.total > 0 ? (stats.attended / stats.total) * 100 : 0;
       return {
-        subject: classInfo?.name || 'Unknown Class',
+        subject: stats.name,
         totalClasses: stats.total,
         attendedClasses: stats.attended,
         percentage: parseFloat(percentage.toFixed(1)),
       };
     });
-  }, [attendanceRecords, classMap]);
+  }, [attendanceRecords]);
   
   const overallStats = useMemo(() => {
     if (subjectWiseAttendance.length === 0) {
@@ -130,14 +115,16 @@ export default function MyAttendancePage() {
     const uniqueDaysByMonth: { [key: string]: Set<string> } = {};
 
     attendanceRecords.forEach(record => {
-        const month = format(parseISO(record.date), 'MMM');
-        if (!uniqueDaysByMonth[month]) uniqueDaysByMonth[month] = new Set();
-        uniqueDaysByMonth[month].add(record.date);
+        try {
+          const month = format(parseISO(record.date), 'MMM');
+          if (!uniqueDaysByMonth[month]) uniqueDaysByMonth[month] = new Set();
+          uniqueDaysByMonth[month].add(record.date);
 
-        if (!attendanceByMonth[month]) attendanceByMonth[month] = { present: 0, total: 0 };
-        if (record.status === 'Present') {
-            attendanceByMonth[month].present++;
-        }
+          if (!attendanceByMonth[month]) attendanceByMonth[month] = { present: 0, total: 0 };
+          if (record.status === 'Present') {
+              attendanceByMonth[month].present++;
+          }
+        } catch(e) { /* ignore invalid dates */ }
     });
 
     for (const month in uniqueDaysByMonth) {
@@ -283,3 +270,5 @@ export default function MyAttendancePage() {
     </div>
   );
 }
+
+    

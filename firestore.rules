@@ -53,6 +53,15 @@ service cloud.firestore {
     }
 
     /**
+     * @description Checks if the user has the student role from their user profile document.
+     */
+    function isStudent() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && userDoc != null && userDoc.data.role == 'student';
+    }
+
+
+    /**
      * @description Checks if the user is the faculty owner of a specific class.
      * It verifies ownership by checking the 'facultyId' on the class document itself.
      */
@@ -77,17 +86,16 @@ service cloud.firestore {
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
 
-      // Students can read their own attendance, faculty can read/write for their students.
+      // Students can only access their own attendance subcollection.
       match /attendance/{attendanceId} {
-        allow read, list: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin() || isClassOwner(request.resource.data.classId);
+        allow read, write: if isOwner(userId) || isClassOwner(request.resource.data.classId);
+        allow list: if isOwner(userId);
       }
     }
     
     // Faculty can manage the classes listed under their own profile. This enforces ownership.
     match /users/{facultyId}/classes/{classId} {
-      allow read, list: if isOwner(facultyId) || isAdmin();
-      allow create, update, delete: if isOwner(facultyId) || isAdmin();
+      allow read, list, create, update, delete: if isOwner(facultyId) || isAdmin();
     }
 
     // Rules for the root /classes collection
@@ -99,14 +107,12 @@ service cloud.firestore {
         allow list: if isAdmin() || isFaculty();
         
         // Write: Only Admins or the assigned faculty can create/update/delete.
-        allow create, update: if isAdmin() || isClassOwner(classId);
-        allow delete: if isAdmin() || isClassOwner(classId);
+        allow create, update, delete: if isAdmin() || isClassOwner(classId);
     }
     
     // Rules for managing students within a class
     match /classes/{classId}/students/{studentId} {
       // Read/List: Admin or the class owner can see the enrolled students.
-      // A faculty member needs to list students to enroll them.
       allow read, list: if isAdmin() || isClassOwner(classId);
       
       // Create/Update/Delete: Only the class owner or an admin can manage the roster.
@@ -114,7 +120,7 @@ service cloud.firestore {
       allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
     }
 
-    // Rules for attendance records
+    // Rules for attendance records within a class
     match /classes/{classId}/attendance/{attendanceId} {
       // Read/List: Admin or the class owner can see attendance.
       allow read, list: if isAdmin() || isClassOwner(classId);
@@ -125,11 +131,20 @@ service cloud.firestore {
     }
 
     // Collection group queries for attendance.
-    // Admins can query all attendance.
-    // Faculty can query for records they own.
     match /{path=**}/attendance/{docId} {
-      allow list: if isAdmin() || (isFaculty() && request.query.where.get('facultyId')[2] == request.auth.uid);
-      allow get: if isAdmin() || (isFaculty() && get(/databases/$(database)/documents/$(path)/$(docId)).data.facultyId == request.auth.uid);
+        // A student can query their own attendance records across all classes.
+        // A faculty can query attendance records for their own classes.
+        // An admin can query all attendance records.
+        allow list: if (isStudent() && request.query.where.get('studentId')[2] == request.auth.uid) ||
+                       (isFaculty() && request.query.where.get('facultyId')[2] == request.auth.uid) ||
+                       isAdmin();
+        
+        // Individual doc reads must still be protected by ownership.
+        allow get: if (isStudent() && get(/databases/$(database)/documents/$(path)/$(docId)).data.studentId == request.auth.uid) ||
+                      (isFaculty() && get(/databases/$(database)/documents/$(path)/$(docId)).data.facultyId == request.auth.uid) ||
+                      isAdmin();
     }
   }
 }
+
+    

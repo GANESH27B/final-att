@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, query, setDoc, where, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, doc, query, setDoc, where, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -107,60 +107,59 @@ export default function AttendancePage() {
     if (!firestore || !selectedClassId || !sessionDate || !currentUser) return;
 
     const studentId = student.id;
+    const batch = writeBatch(firestore);
+    
     const attendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
     const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${selectedClassId}_${sessionDate}`);
     
     if (status === 'Absent') {
-        // Delete the attendance record
-        deleteDoc(attendanceDocRef).catch(console.error);
-        deleteDoc(studentAttendanceDocRef).catch(console.error);
+        batch.delete(attendanceDocRef);
+        batch.delete(studentAttendanceDocRef);
         toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
     } else {
-        // Create or update the attendance record
+        const selectedClass = facultyClasses?.find(c => c.id === selectedClassId);
         const attendanceData = {
           studentId,
           studentName: student.name,
           classId: selectedClassId,
+          className: selectedClass?.name || "Unknown Class",
           facultyId: currentUser.uid,
           date: sessionDate,
           status: "Present",
           timestamp: serverTimestamp(),
         };
-
-        setDoc(attendanceDocRef, attendanceData).catch((error: any) => {
-            if (error.code === 'permission-denied') {
-              const permissionError = new FirestorePermissionError({ path: attendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
-              errorEmitter.emit('permission-error', permissionError);
-            } else {
-                toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in class log." });
-            }
-        });
-        
-        setDoc(studentAttendanceDocRef, attendanceData).catch((error: any) => {
-            if (error.code === 'permission-denied') {
-              const permissionError = new FirestorePermissionError({ path: studentAttendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
-              errorEmitter.emit('permission-error', permissionError);
-            } else {
-                toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in student record." });
-            }
-        });
+        batch.set(attendanceDocRef, attendanceData);
+        batch.set(studentAttendanceDocRef, attendanceData);
         toast({ title: "Marked Present", description: `${student.name} marked as present.`, className: "bg-green-100 dark:bg-green-900 border-green-500"});
     }
-  }, [firestore, selectedClassId, sessionDate, currentUser, toast]);
+
+    try {
+        await batch.commit();
+    } catch (error: any) {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write' });
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+            toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
+        }
+    }
+  }, [firestore, selectedClassId, sessionDate, currentUser, toast, facultyClasses]);
 
 
   const markAttendance = useCallback(async (studentIdentifier: string) => {
     if (!firestore || !selectedClassId || !sessionActive || !currentUser) return;
 
     let student: User | undefined;
-    if (studentMap.has(studentIdentifier)) {
-      student = studentMap.get(studentIdentifier);
+    // Student ID can come from QR code, or registration number from manual input
+    const trimmedIdentifier = studentIdentifier.trim();
+    if (studentMap.has(trimmedIdentifier)) {
+      student = studentMap.get(trimmedIdentifier);
     } else {
-      student = enrolledStudents?.find(s => s.registrationNumber === studentIdentifier);
+      student = enrolledStudents?.find(s => s.registrationNumber === trimmedIdentifier);
     }
 
     if (!student) {
-        setLastScanResult({ status: 'not_found', message: `Student with identifier "${studentIdentifier}" not found in this class.` });
+        setLastScanResult({ status: 'not_found', message: `Student with identifier "${trimmedIdentifier}" not found in this class.` });
         toast({ variant: "destructive", title: "Student Not Found", description: "This student is not enrolled in the selected class." });
         return;
     }
@@ -182,6 +181,9 @@ export default function AttendancePage() {
     setSessionDate("");
     setLastScanResult(null);
     setHasCameraPermission(null);
+    if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().then(() => scannerRef.current = null);
+    }
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
@@ -227,7 +229,7 @@ export default function AttendancePage() {
           if (scannerRef.current?.isScanning) {
             try {
               scannerRef.current.pause(true);
-              setTimeout(() => scannerRef.current?.resume(), 1000);
+              setTimeout(() => scannerRef.current?.resume(), 1500); // Increased pause
             } catch (e) {
               console.warn("Could not pause/resume scanner", e);
             }
@@ -291,7 +293,7 @@ export default function AttendancePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ScanLine /> QR/Barcode Scanner</CardTitle>
-            <CardDescription>Scan student QR or Barcodes to mark attendance.</CardDescription>
+            <CardDescription>Scan student IDs or registration numbers to mark attendance.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
@@ -396,3 +398,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    

@@ -23,6 +23,7 @@ export type AttendanceRecord = {
   studentName?: string; // Made optional as it might not be on every record
   studentId: string;
   classId: string;
+  className?: string; // Denormalized for easier display in student's portal
   facultyId: string;
   date: string;
   status: "Present" | "Absent";
@@ -34,3 +35,5 @@ export type StudentAttendance = {
   attendedClasses: number;
   percentage: number;
 };
+
+    
