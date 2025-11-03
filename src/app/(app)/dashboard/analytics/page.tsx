@@ -69,17 +69,13 @@ export default function AnalyticsPage() {
   });
   
   const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
-  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const studentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users'), where('role', '==', 'student')) : null, [firestore]);
+  const facultyQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, [firestore]);
+
 
   const { data: classesData, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
-  const { data: usersData, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
-
-  const { students, faculty } = useMemo(() => {
-    const students = usersData?.filter(u => u.role === 'student') || [];
-    const faculty = usersData?.filter(u => u.role === 'faculty') || [];
-    return { students, faculty };
-  }, [usersData]);
-
+  const { data: studentsData, isLoading: isLoadingStudents } = useCollection<User>(studentsQuery);
+  const { data: facultyData, isLoading: isLoadingFaculty } = useCollection<User>(facultyQuery);
 
   const analysisType = form.watch("analysisType");
   
@@ -180,8 +176,8 @@ export default function AnalyticsPage() {
     }
   };
 
-  const isLoading = isLoadingClasses || isLoadingUsers;
-  const currentSelectionData = analysisType === 'class' ? classesData : (analysisType === 'student' ? students : faculty);
+  const isLoading = isLoadingClasses || isLoadingStudents || isLoadingFaculty;
+  const currentSelectionData = analysisType === 'class' ? classesData : (analysisType === 'student' ? studentsData : facultyData);
 
   return (
     <div className="space-y-6">

@@ -70,8 +70,7 @@ service cloud.firestore {
     // Admins can manage all users. Users can read/update their own profile.
     match /users/{userId} {
       allow get: if isAdmin() || isOwner(userId);
-      // list: Admins can list all users. Faculty can list students to enroll them.
-      allow list: if isAdmin() || (isFaculty() && request.query.role == 'student');
+      allow list: if isAdmin();
       allow create: if isAdmin(); // Only admins can create users via the UI.
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
