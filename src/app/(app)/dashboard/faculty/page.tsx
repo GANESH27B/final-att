@@ -14,7 +14,7 @@ import { Bar, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
 import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO, startOfToday, isFuture } from 'date-fns';
 
@@ -40,27 +40,33 @@ export default function FacultyDashboardPage() {
         firestore && user ? query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid)) : null,
         [firestore, user]
     );
-
     const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
     
-    const studentsQuery = useMemoFirebase(() => {
-        if (!firestore || !myClasses || myClasses.length === 0) return null;
-        // This is a simplification. For a large number of classes, this would be inefficient.
-        // It fetches all students and filters client-side. A better approach for scale
-        // would involve dedicated student count fields on class docs or a collectionGroup query if indexed.
-        return query(collectionGroup(firestore, 'students'));
+    const [studentCount, setStudentCount] = useState(0);
+    const [isLoadingStudentCount, setIsLoadingStudentCount] = useState(true);
+
+    const fetchStudentCount = useCallback(async () => {
+        if (!firestore || !myClasses) return;
+        setIsLoadingStudentCount(true);
+        let totalStudents = new Set<string>();
+
+        for (const cls of myClasses) {
+            const studentsRef = collection(firestore, `classes/${cls.id}/students`);
+            const studentsSnap = await getDocs(studentsRef);
+            studentsSnap.forEach(doc => totalStudents.add(doc.id));
+        }
+        setStudentCount(totalStudents.size);
+        setIsLoadingStudentCount(false);
+
     }, [firestore, myClasses]);
 
-    const { data: allStudents, isLoading: isLoadingStudents } = useCollection<UserType>(studentsQuery);
-    
-    const myStudentIds = useMemo(() => {
-        if (!myClasses || !allStudents) return [];
-        const classIds = myClasses.map(c => c.id);
-        return allStudents.filter(s => s.classId && classIds.includes(s.classId)).map(s => s.id);
-    }, [myClasses, allStudents]);
+    useEffect(() => {
+        if (myClasses) {
+            fetchStudentCount();
+        }
+    }, [myClasses, fetchStudentCount]);
 
-
-    const isLoading = isLoadingClasses || isLoadingAttendance || (myClasses && myClasses.length > 0 && isLoadingStudents);
+    const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudentCount;
 
     const stats = useMemo(() => {
         if (!myClasses || !attendance) {
@@ -73,40 +79,38 @@ export default function FacultyDashboardPage() {
         }
 
         const totalClasses = myClasses.length;
-        const totalStudents = new Set(myStudentIds).size;
 
         const presentCount = attendance.filter(a => a.status === 'Present').length;
         const avgAttendance = attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
         
-        // This is a simplification for upcoming class. A real implementation would need class schedules.
         const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
 
         return {
-            totalStudents,
+            totalStudents: studentCount,
             totalClasses,
             avgAttendance,
             upcomingClass
         };
-    }, [myClasses, attendance, myStudentIds]);
+    }, [myClasses, attendance, studentCount]);
     
     const myClassAttendanceData = useMemo(() => {
         if (!myClasses || !attendance || myClasses.length === 0) return [];
     
-        const classAttendance = myClasses.map(cls => {
+        const classAttendance = myClasses.map((cls, index) => {
             const relevantAttendance = attendance.filter(a => a.classId === cls.id);
             if (relevantAttendance.length === 0) {
-                return { name: cls.name, attendance: 0 };
+                return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
             }
             const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
             const avg = (presentCount / relevantAttendance.length) * 100;
-            return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(myClasses.indexOf(cls) % 5) + 1}))` };
-        });
-    
-        myClasses.forEach((cls, index) => {
+            const fill = `hsl(var(--chart-${(index % 5) + 1}))`;
+
             const key = cls.name.replace(/\s+/g, '').toLowerCase();
             if (!chartConfig[key as keyof typeof chartConfig]) {
-                (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
+                (chartConfig as any)[key] = { label: cls.name, color: fill };
             }
+
+            return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill };
         });
     
         return classAttendance;
