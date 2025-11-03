@@ -182,10 +182,6 @@ export default function AttendancePage() {
     setSessionDate("");
     setLastScanResult(null);
     setHasCameraPermission(null);
-    if (scannerRef.current?.isScanning) {
-        scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
-        scannerRef.current = null;
-    }
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
@@ -214,39 +210,49 @@ export default function AttendancePage() {
     };
     requestCamera();
   }, [sessionActive, hasCameraPermission, toast]);
-
+  
   useEffect(() => {
     if (sessionActive && hasCameraPermission && !scannerRef.current) {
-        const scanner = new Html5Qrcode('reader', {
-            verbose: false,
-            formatsToSupport: scannerConfig.supportedScanTypes,
-        });
-        scannerRef.current = scanner;
-        
-        scanner.start(
-            { facingMode: "environment" },
-            scannerConfig,
-            (decodedText, decodedResult) => { 
-                markAttendance(decodedText); 
-                if (scannerRef.current?.isScanning) {
-                    scannerRef.current.pause(true);
-                    setTimeout(() => scannerRef.current?.resume(), 1000);
-                }
-            },
-            (errorMessage) => { /* ignore */ }
-        ).catch(err => {
-            console.error("QR/Barcode Scanner start failed:", err);
-            if (String(err).includes("NotAllowedError") || String(err).includes("NotFoundError")) {
-              setHasCameraPermission(false);
+      const scanner = new Html5Qrcode('reader', {
+        verbose: false,
+        formatsToSupport: scannerConfig.supportedScanTypes,
+      });
+      scannerRef.current = scanner;
+
+      scanner.start(
+        { facingMode: 'environment' },
+        scannerConfig,
+        (decodedText) => {
+          markAttendance(decodedText);
+          if (scannerRef.current?.isScanning) {
+            try {
+              scannerRef.current.pause(true);
+              setTimeout(() => scannerRef.current?.resume(), 1000);
+            } catch (e) {
+              console.warn("Could not pause/resume scanner", e);
             }
-        });
+          }
+        },
+        () => { /* ignore errors */ }
+      ).catch((err) => {
+        console.error('Scanner start error:', err);
+        if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
+          setHasCameraPermission(false);
+        }
+      });
     }
 
+    // Cleanup function to stop scanner on session end or component unmount
     return () => {
-        if (scannerRef.current?.isScanning) {
-            scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop()
+          .then(() => {
             scannerRef.current = null;
-        }
+          })
+          .catch((err) => {
+            console.error('Failed to stop scanner cleanly:', err);
+          });
+      }
     };
   }, [sessionActive, hasCameraPermission, markAttendance]);
   
@@ -289,7 +295,7 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className={cn("w-full h-full", !sessionActive && "hidden")} />
+                <div id="reader" className="w-full h-full" />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
@@ -390,5 +396,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
