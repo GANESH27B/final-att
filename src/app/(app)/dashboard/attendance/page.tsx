@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { QrCode, ScanLine, ListChecks, PlayCircle, StopCircle, AlertTriangle, UserX, UserCheck } from "lucide-react";
+import { QrCode, ScanLine, ListChecks, StopCircle, AlertTriangle, UserX, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
@@ -27,10 +27,7 @@ import { cn } from "@/lib/utils";
 const scannerConfig = {
   fps: 10,
   qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-    // Make it responsive, but never smaller than 50px.
     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-    // Use 70% of the smallest edge, but ensure it's at least 250px for better scanning,
-    // or fallback to the minEdge if it's smaller.
     const qrboxSize = Math.max(50, Math.min(250, minEdge * 0.7));
     return {
       width: qrboxSize,
@@ -64,8 +61,7 @@ export default function AttendancePage() {
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
+  
   // Fetch classes for the current faculty member
   const facultyClassesQuery = useMemoFirebase(() =>
     firestore && currentUser ? query(collection(firestore, 'classes'), where('facultyId', '==', currentUser.uid)) : null,
@@ -176,6 +172,10 @@ export default function AttendancePage() {
     setSelectedClassId(null);
     setSessionDate("");
     setLastScanResult(null);
+    if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
+        scannerRef.current = null;
+    }
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
@@ -183,27 +183,23 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    const getCameraPermission = async () => {
-        if (sessionActive && selectedClassId) {
+    const requestCamera = async () => {
+        if (sessionActive && hasCameraPermission === null) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                setHasCameraPermission(true);
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
+                const devices = await Html5Qrcode.getCameras();
+                if (devices && devices.length) {
+                    setHasCameraPermission(true);
+                } else {
+                    setHasCameraPermission(false);
                 }
-            } catch (error) {
-                console.error('Error accessing camera:', error);
+            } catch (err) {
+                console.error('Camera permission error:', err);
                 setHasCameraPermission(false);
-                toast({
-                    variant: 'destructive',
-                    title: 'Camera Access Denied',
-                    description: 'Please enable camera permissions in your browser settings to use the scanner.',
-                });
             }
         }
     };
-    getCameraPermission();
-  }, [sessionActive, selectedClassId, toast]);
+    requestCamera();
+  }, [sessionActive, hasCameraPermission]);
 
   useEffect(() => {
     if (sessionActive && hasCameraPermission && !scannerRef.current) {
@@ -212,18 +208,23 @@ export default function AttendancePage() {
             formatsToSupport: scannerConfig.supportedScanTypes,
         });
         scannerRef.current = scanner;
+        
         scanner.start(
             { facingMode: "environment" },
             scannerConfig,
             (decodedText, decodedResult) => { 
                 markAttendance(decodedText); 
-                scanner.pause(true);
-                setTimeout(() => scanner.resume(), 1000); // Pause for a second to prevent double scans
+                if (scannerRef.current?.isScanning) {
+                    scannerRef.current.pause(true);
+                    setTimeout(() => scannerRef.current?.resume(), 1000);
+                }
             },
             (errorMessage) => { /* ignore */ }
         ).catch(err => {
             console.error("QR/Barcode Scanner start failed:", err);
-            if (err.name === "NotAllowedError") setHasCameraPermission(false);
+            if (String(err).includes("NotAllowedError")) {
+              setHasCameraPermission(false);
+            }
         });
     }
 
@@ -274,33 +275,33 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className={cn(!sessionActive && "opacity-0")} />
+                <div id="reader" className={cn(!sessionActive && "hidden")} />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
                         <p className="mt-4 text-muted-foreground">Select a class to start</p>
                     </div>
                 )}
+                 {sessionActive && hasCameraPermission === false && (
+                    <Alert variant="destructive" className="absolute m-4">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Camera Access Denied</AlertTitle>
+                        <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
+                    </Alert>
+                )}
             </div>
              {sessionActive && lastScanResult && (
                 <Alert className="mt-4" variant={lastScanResult.status === "success" ? "default" : "destructive"}>
-                    <AlertTitle>
-                        {lastScanResult.status === "success" && "Scan Successful"}
-                        {lastScanResult.status === "not_found" && "Student Not Found"}
-                        {lastScanResult.status === "already_marked" && "Already Marked"}
-                        {lastScanResult.status === "error" && "Scan Error"}
+                    <AlertTitle className="flex items-center gap-2">
+                        {lastScanResult.status === "success" && <><UserCheck/>Scan Successful</>}
+                        {lastScanResult.status === "not_found" && <><UserX/>Student Not Found</>}
+                        {lastScanResult.status === "already_marked" && <><Badge>!</Badge>Already Marked</>}
+                        {lastScanResult.status === "error" && <><AlertTriangle/>Scan Error</>}
                     </AlertTitle>
                     <AlertDescription>{lastScanResult.message}</AlertDescription>
                 </Alert>
             )}
 
-            {sessionActive && hasCameraPermission === false && (
-                <Alert variant="destructive" className="mt-4">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Camera Access Denied</AlertTitle>
-                    <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
-                </Alert>
-            )}
             <div className="mt-4 flex flex-col sm:flex-row items-center gap-4">
               <Input 
                 placeholder="Or enter registration number manually" 
