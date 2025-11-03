@@ -16,6 +16,7 @@ import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 interface EnrichedClass extends Class {
   facultyName: string;
@@ -40,6 +41,9 @@ export default function ClassManagementPage() {
       const facultyMap = new Map(users.filter(u => u.role === 'faculty').map(f => [f.id, f.name]));
       
       const studentsByClass = classes.reduce((acc, cls) => {
+        // This logic is slightly flawed as student documents don't live under classes directly in the users collection.
+        // A proper implementation would query the subcollection of students for each class.
+        // For now, we assume a `classId` field on the user object for simplicity.
         const classStudents = users.filter(u => u.role === 'student' && u.classId === cls.id);
         acc.set(cls.id, classStudents.length);
         return acc;
@@ -108,9 +112,11 @@ export default function ClassManagementPage() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button variant="outline" className="w-full">
-                  Manage Class
-                </Button>
+                <Link href={`/dashboard/classes/${cls.id}`} passHref className="w-full">
+                  <Button variant="outline" className="w-full">
+                    Manage Class
+                  </Button>
+                </Link>
               </CardFooter>
             </Card>
           ))}

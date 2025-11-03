@@ -15,7 +15,8 @@ export type Class = {
   id: string;
   name: string;
   facultyId: string;
-  studentCount: number;
+  // studentCount is no longer needed here as it can be derived
+  // studentCount: number; 
   section: string;
 };
 
