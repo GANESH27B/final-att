@@ -7,16 +7,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BarChart, LineChart } from "recharts";
-import { Users, BookOpen, Percent, TrendingUp } from "lucide-react";
+import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
+import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
 import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, parseISO, startOfToday, isFuture } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 const chartConfig = {
   attendance: {
@@ -43,20 +42,29 @@ export default function FacultyDashboardPage() {
         if (!firestore || !myClasses) return;
 
         setIsLoadingAttendance(true);
-        let allAttendance: AttendanceRecord[] = [];
-        for (const cls of myClasses) {
-            const attendanceRef = collection(firestore, `classes/${cls.id}/attendance`);
-            const attendanceSnap = await getDocs(attendanceRef);
-            allAttendance.push(...attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord)));
+        try {
+            if (myClasses.length === 0) {
+                setAttendance([]);
+                return;
+            }
+            // A collection group query is more efficient if the user is a member of many classes.
+            const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user?.uid));
+            const attendanceSnap = await getDocs(attendanceQuery);
+            const allAttendance: AttendanceRecord[] = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+            setAttendance(allAttendance);
+        } catch (error) {
+            console.error("Error fetching attendance data:", error);
+            setAttendance([]);
+        } finally {
+            setIsLoadingAttendance(false);
         }
-        setAttendance(allAttendance);
-        setIsLoadingAttendance(false);
-    }, [firestore, myClasses]);
+    }, [firestore, myClasses, user?.uid]);
 
     useEffect(() => {
         if (myClasses) {
             fetchAttendanceForClasses();
         } else if (!isLoadingClasses) {
+            // No classes found, so attendance fetching is done.
             setIsLoadingAttendance(false);
         }
     }, [myClasses, isLoadingClasses, fetchAttendanceForClasses]);
@@ -67,28 +75,38 @@ export default function FacultyDashboardPage() {
     const fetchStudentCount = useCallback(async () => {
         if (!firestore || !myClasses) return;
         setIsLoadingStudentCount(true);
-        let totalStudents = new Set<string>();
-
-        for (const cls of myClasses) {
-            const studentsRef = collection(firestore, `classes/${cls.id}/students`);
-            const studentsSnap = await getDocs(studentsRef);
-            studentsSnap.forEach(doc => totalStudents.add(doc.id));
+        try {
+            if (myClasses.length === 0) {
+                setStudentCount(0);
+                return;
+            }
+            let totalStudents = new Set<string>();
+            for (const cls of myClasses) {
+                const studentsRef = collection(firestore, `classes/${cls.id}/students`);
+                const studentsSnap = await getDocs(studentsRef);
+                studentsSnap.forEach(doc => totalStudents.add(doc.id));
+            }
+            setStudentCount(totalStudents.size);
+        } catch (error) {
+            console.error("Error fetching student count: ", error);
+            setStudentCount(0);
+        } finally {
+            setIsLoadingStudentCount(false);
         }
-        setStudentCount(totalStudents.size);
-        setIsLoadingStudentCount(false);
-
     }, [firestore, myClasses]);
 
     useEffect(() => {
         if (myClasses) {
             fetchStudentCount();
+        } else if (!isLoadingClasses) {
+            setIsLoadingStudentCount(false);
         }
-    }, [myClasses, fetchStudentCount]);
+    }, [myClasses, isLoadingClasses, fetchStudentCount]);
 
     const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudentCount;
 
     const stats = useMemo(() => {
-        if (!myClasses || !attendance) {
+        if (!myClasses) {
             return {
                 totalStudents: 0,
                 totalClasses: 0,
@@ -113,9 +131,9 @@ export default function FacultyDashboardPage() {
     }, [myClasses, attendance, studentCount]);
     
     const myClassAttendanceData = useMemo(() => {
-        if (!myClasses || !attendance || myClasses.length === 0) return [];
+        if (!myClasses || myClasses.length === 0) return [];
     
-        const classAttendance = myClasses.map((cls, index) => {
+        return myClasses.map((cls, index) => {
             const relevantAttendance = attendance.filter(a => a.classId === cls.id);
             if (relevantAttendance.length === 0) {
                 return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
@@ -124,15 +142,14 @@ export default function FacultyDashboardPage() {
             const avg = (presentCount / relevantAttendance.length) * 100;
             const fill = `hsl(var(--chart-${(index % 5) + 1}))`;
 
+            // Dynamically update chart config for tooltips
             const key = cls.name.replace(/\s+/g, '').toLowerCase();
-            if (!chartConfig[key as keyof typeof chartConfig]) {
+            if (!(chartConfig as any)[key]) {
                 (chartConfig as any)[key] = { label: cls.name, color: fill };
             }
 
             return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill };
         });
-    
-        return classAttendance;
     
     }, [myClasses, attendance]);
 
@@ -142,13 +159,17 @@ export default function FacultyDashboardPage() {
         const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
 
         attendance.forEach(record => {
-            const month = format(parseISO(record.date), 'MMM');
-            if (!attendanceByMonth[month]) {
-                attendanceByMonth[month] = { present: 0, total: 0 };
-            }
-            attendanceByMonth[month].total++;
-            if (record.status === 'Present') {
-                attendanceByMonth[month].present++;
+            try {
+                const month = format(parseISO(record.date), 'MMM');
+                if (!attendanceByMonth[month]) {
+                    attendanceByMonth[month] = { present: 0, total: 0 };
+                }
+                attendanceByMonth[month].total++;
+                if (record.status === 'Present') {
+                    attendanceByMonth[month].present++;
+                }
+            } catch (e) {
+                console.warn(`Invalid date format for record ${record.id}: ${record.date}`);
             }
         });
 
@@ -209,7 +230,7 @@ export default function FacultyDashboardPage() {
         </Card>
          <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming Classes</CardTitle>
+            <CardTitle className="text-sm font-medium">Upcoming Class</CardTitle>
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -228,15 +249,21 @@ export default function FacultyDashboardPage() {
           </CardHeader>
           <CardContent>
              {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
-             <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                <BarChart data={myClassAttendanceData} accessibilityLayer>
-                   <CartesianGrid vertical={false} />
-                   <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
-                   <YAxis domain={[0, 100]} />
-                   <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                   <Bar dataKey="attendance" radius={8} />
-                </BarChart>
-             </ChartContainer>
+             myClassAttendanceData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                    <BarChart data={myClassAttendanceData} accessibilityLayer>
+                       <CartesianGrid vertical={false} />
+                       <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
+                       <YAxis domain={[0, 100]} unit="%" />
+                       <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                       <Bar dataKey="attendance" radius={8} />
+                    </BarChart>
+                </ChartContainer>
+             ) : (
+                <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                    No attendance data to display.
+                </div>
+             )
              )}
           </CardContent>
         </Card>
@@ -247,15 +274,21 @@ export default function FacultyDashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
-            <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                <LineChart data={myOverallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                </LineChart>
-            </ChartContainer>
+            myOverallAttendanceData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                    <LineChart data={myOverallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                      <YAxis domain={[0, 100]} unit="%" />
+                      <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                    </LineChart>
+                </ChartContainer>
+            ) : (
+                <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                    No trend data available.
+                </div>
+            )
             )}
           </CardContent>
         </Card>
