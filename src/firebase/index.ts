@@ -3,10 +3,9 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence, Firestore } from 'firebase/firestore'
+import { getFirestore, initializeFirestore, memoryLocalCache, persistentLocalCache, Firestore } from 'firebase/firestore'
 
 let firestoreInstance: Firestore | null = null;
-let persistenceEnabled = false;
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -30,18 +29,26 @@ export function initializeFirebase() {
 
 export function getSdks(firebaseApp: FirebaseApp) {
   if (!firestoreInstance) {
-      const db = getFirestore(firebaseApp);
-      if (!persistenceEnabled) {
-          enableIndexedDbPersistence(db).catch((err) => {
-            if (err.code == 'failed-precondition') {
-              console.warn('Firestore persistence failed: Multiple tabs open, persistence can only be enabled in one tab at a time.');
-            } else if (err.code == 'unimplemented') {
-              console.warn('Firestore persistence failed: The current browser does not support all of the features required to enable persistence.');
-            }
-          });
-          persistenceEnabled = true;
+      try {
+        firestoreInstance = initializeFirestore(firebaseApp, {
+            localCache: persistentLocalCache(/*settings*/{ tabManager: 'PRIMARY' }),
+        });
+      } catch (e) {
+         if ((e as any).code === 'failed-precondition') {
+            console.warn('Firestore persistence failed: Multiple tabs open, persistence can only be enabled in one tab at a time. Falling back to in-memory cache.');
+             firestoreInstance = initializeFirestore(firebaseApp, {
+                localCache: memoryLocalCache(),
+            });
+         } else if ((e as any).code === 'unimplemented') {
+            console.warn('Firestore persistence failed: The current browser does not support all of the features required to enable persistence. Falling back to in-memory cache.');
+             firestoreInstance = initializeFirestore(firebaseApp, {
+                localCache: memoryLocalCache(),
+            });
+         } else {
+            // if we have some other error, just use the old firestore instance.
+            firestoreInstance = getFirestore(firebaseApp);
+         }
       }
-      firestoreInstance = db;
   }
   
   return {
