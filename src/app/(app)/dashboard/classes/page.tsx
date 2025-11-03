@@ -11,12 +11,12 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Users } from "lucide-react";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 
 interface EnrichedClass extends Class {
@@ -26,13 +26,35 @@ interface EnrichedClass extends Class {
 
 export default function ClassManagementPage() {
   const firestore = useFirestore();
+  const { user: currentUser } = useUser();
   
-  // Changed from collectionGroup to collection to fix permission error
+  // Use a targeted collection query instead of a collectionGroup query
   const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
-  const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+  const { data: allFetchedClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
 
   const usersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserType>(usersCollection);
+  
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+      if (users && currentUser) {
+          const role = users.find(u => u.id === currentUser.uid)?.role;
+          if (role) setUserRole(role);
+      }
+  }, [users, currentUser]);
+
+  const classes = useMemo(() => {
+    if (!allFetchedClasses || !currentUser) return [];
+    if (userRole === 'admin') {
+      return allFetchedClasses;
+    }
+    if (userRole === 'faculty') {
+      return allFetchedClasses.filter(c => c.facultyId === currentUser.uid);
+    }
+    return [];
+  }, [allFetchedClasses, currentUser, userRole]);
+
 
   const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
   const [isLoading, setIsLoading] = useState(true);
