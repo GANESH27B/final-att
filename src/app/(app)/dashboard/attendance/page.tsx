@@ -11,14 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { QrCode, ScanLine, ListChecks, CheckCircle, PlayCircle, StopCircle, AlertTriangle, UserX, UserCheck } from "lucide-react";
+import { QrCode, ScanLine, ListChecks, PlayCircle, StopCircle, AlertTriangle, UserX, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, query, setDoc, where, getDocs, serverTimestamp } from "firebase/firestore";
+import { collection, doc, query, setDoc, where, serverTimestamp } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -36,6 +36,7 @@ export default function AttendancePage() {
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Fetch classes for the current faculty member
   const facultyClassesQuery = useMemoFirebase(() =>
@@ -69,7 +70,6 @@ export default function AttendancePage() {
   const markAttendance = useCallback(async (studentIdentifier: string) => {
     if (!firestore || !selectedClassId || !sessionActive || !currentUser) return;
 
-    // Find student by ID or registration number
     let student: User | undefined;
     if (studentMap.has(studentIdentifier)) {
       student = studentMap.get(studentIdentifier);
@@ -101,29 +101,32 @@ export default function AttendancePage() {
       timestamp: serverTimestamp(),
     };
 
-    try {
-      // Use a batch to write to both locations atomically
-      const batch = setDoc(attendanceDocRef, attendanceData);
-      await setDoc(studentAttendanceDocRef, attendanceData);
-
-      toast({
-        title: "Attendance Marked",
-        description: `${student.name} has been marked as present.`,
-        className: "bg-green-100 dark:bg-green-900 border-green-500",
-      });
-    } catch (error: any) {
+    setDoc(attendanceDocRef, attendanceData).catch((error: any) => {
         if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
-            path: attendanceDocRef.path,
-            operation: 'create',
-            requestResourceData: attendanceData,
-          });
+          const permissionError = new FirestorePermissionError({ path: attendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
           errorEmitter.emit('permission-error', permissionError);
         } else {
-            toast({ variant: "destructive", title: "Error", description: "Could not mark attendance." });
+            toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in class log." });
             console.error("Error marking attendance: ", error);
         }
-    }
+    });
+    
+    setDoc(studentAttendanceDocRef, attendanceData).catch((error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({ path: studentAttendanceDocRef.path, operation: 'create', requestResourceData: attendanceData });
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+            toast({ variant: "destructive", title: "Error", description: "Could not mark attendance in student record." });
+            console.error("Error marking student attendance: ", error);
+        }
+    });
+
+    toast({
+      title: "Attendance Marked",
+      description: `${student.name} has been marked as present.`,
+      className: "bg-green-100 dark:bg-green-900 border-green-500",
+    });
+
   }, [firestore, selectedClassId, sessionActive, enrolledStudents, presentStudentIds, sessionDate, toast, currentUser, studentMap]);
 
   const handleStartSession = () => {
@@ -140,32 +143,42 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    const requestPermissionAndStart = async () => {
+    const getCameraPermission = async () => {
         if (sessionActive && selectedClassId) {
             try {
-                await Html5Qrcode.getCameras();
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 setHasCameraPermission(true);
-            } catch (err) {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            } catch (error) {
+                console.error('Error accessing camera:', error);
                 setHasCameraPermission(false);
                 toast({
                     variant: 'destructive',
-                    title: 'Camera Permission Denied',
-                    description: 'Please enable camera permissions to start scanning.',
+                    title: 'Camera Access Denied',
+                    description: 'Please enable camera permissions in your browser settings to use the scanner.',
                 });
             }
         }
-    }
-    requestPermissionAndStart();
+    };
+    getCameraPermission();
   }, [sessionActive, selectedClassId, toast]);
 
   useEffect(() => {
-    if (sessionActive && hasCameraPermission) {
-        const scanner = new Html5Qrcode('reader');
+    if (sessionActive && hasCameraPermission && !scannerRef.current) {
+        const scanner = new Html5Qrcode('reader', {
+            verbose: false
+        });
         scannerRef.current = scanner;
         scanner.start(
             { facingMode: "environment" },
             { fps: 10, qrbox: { width: 250, height: 250 } },
-            (decodedText, decodedResult) => { markAttendance(decodedText); },
+            (decodedText, decodedResult) => { 
+                markAttendance(decodedText); 
+                scanner.pause(true);
+                setTimeout(() => scanner.resume(), 1000); // Pause for a second to prevent double scans
+            },
             (errorMessage) => { /* ignore */ }
         ).catch(err => {
             console.error("QR Scanner start failed:", err);
@@ -176,13 +189,14 @@ export default function AttendancePage() {
     return () => {
         if (scannerRef.current?.isScanning) {
             scannerRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
+            scannerRef.current = null;
         }
     };
   }, [sessionActive, hasCameraPermission, markAttendance]);
   
   const handleSubmitManual = () => {
     if (manualRegNumber) {
-        markAttendance(manualRegNumber);
+        markAttendance(manualRegNumber.trim());
         setManualRegNumber("");
     }
   };
@@ -220,7 +234,7 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className={cn("w-full h-full", {"hidden": !sessionActive})} />
+                <div id="reader" className="w-full h-full" />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
@@ -277,20 +291,20 @@ export default function AttendancePage() {
             </div>
             
             <h3 className="font-semibold mb-2">Student List:</h3>
-            <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-              {isLoading && <p>Loading students...</p>}
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
+              {isLoading && <p className="text-muted-foreground text-center p-4">Loading students...</p>}
               {!isLoading && enrolledStudents?.map((student) => {
                 const isPresent = presentStudentIds.has(student.id);
                 return (
-                    <div key={student.id} className="flex items-center justify-between p-2 rounded-md border">
+                    <div key={student.id} className={cn("flex items-center justify-between p-2 rounded-md border", isPresent && "bg-green-50 dark:bg-green-950/20")}>
                         <span className="font-medium text-sm">{student.name}</span>
                         {isPresent ? (
-                            <Badge variant="secondary" className="flex items-center gap-1 text-green-600">
+                            <Badge variant="secondary" className="flex items-center gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                                 <UserCheck className="h-3 w-3" />
                                 Present
                             </Badge>
                         ) : (
-                            <Badge variant="outline" className="flex items-center gap-1 text-red-600">
+                            <Badge variant="outline" className="flex items-center gap-1 text-red-600 border-red-500/50">
                                 <UserX className="h-3 w-3" />
                                 Absent
                             </Badge>
@@ -298,7 +312,7 @@ export default function AttendancePage() {
                     </div>
                 )
             })}
-             {!isLoading && !enrolledStudents && <p className="text-muted-foreground text-center text-sm p-4">No class selected or no students enrolled.</p>}
+             {!isLoading && (!enrolledStudents || enrolledStudents.length === 0) && <p className="text-muted-foreground text-center text-sm p-4">No class selected or no students enrolled.</p>}
             </div>
           </CardContent>
         </Card>
