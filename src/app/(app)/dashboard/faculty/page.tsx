@@ -11,6 +11,11 @@ import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useUser, useFirestore, useMemoFirebase, useCollection } from "@/firebase";
+import { collection, collectionGroup, query, where } from "firebase/firestore";
+import { Class, AttendanceRecord } from "@/lib/types";
+import { useMemo } from "react";
+import { format, parseISO } from 'date-fns';
 
 const chartConfig = {
   attendance: {
@@ -20,33 +25,91 @@ const chartConfig = {
 };
 
 export default function FacultyDashboardPage() {
-    const isLoading = false; // Using static data
+    const { user } = useUser();
+    const firestore = useFirestore();
 
-    const stats = {
-        totalClasses: 3,
-        avgAttendance: 88.5,
-        upcomingClass: "CS 101"
-    };
+    // 1. Fetch classes for the current faculty
+    const myClassesQuery = useMemoFirebase(() => 
+        firestore && user ? query(collection(firestore, 'classes'), where('facultyId', '==', user.uid)) : null,
+        [firestore, user]
+    );
+    const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(myClassesQuery);
+
+    // 2. Fetch attendance records for this faculty's classes
+    const attendanceQuery = useMemoFirebase(() =>
+        firestore && user ? query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid)) : null,
+        [firestore, user]
+    );
+    const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+
+    const isLoading = isLoadingClasses || isLoadingAttendance;
+
+    const stats = useMemo(() => {
+        if (!myClasses || !attendanceRecords) {
+            return {
+                totalClasses: 0,
+                avgAttendance: 0,
+            };
+        }
+        const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
+        const avgAttendance = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
+        return {
+            totalClasses: myClasses.length,
+            avgAttendance,
+        };
+    }, [myClasses, attendanceRecords]);
     
-    const myClassAttendanceData = [
-        { name: 'CS 101', attendance: 92, fill: `hsl(var(--chart-1))` },
-        { name: 'Math 203', attendance: 85, fill: `hsl(var(--chart-2))` },
-        { name: 'Art 100', attendance: 95, fill: `hsl(var(--chart-3))` },
-    ];
+    const myClassAttendanceData = useMemo(() => {
+        if (!myClasses || !attendanceRecords || myClasses.length === 0) return [];
+    
+        const classAttendance = myClasses.map((cls, index) => {
+            const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
+            if (relevantAttendance.length === 0) {
+                return { name: cls.name, attendance: 0 };
+            }
+            const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+            const avg = (presentCount / relevantAttendance.length) * 100;
+            return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(index % 5) + 1}))` };
+        });
+        
+        return classAttendance;
+    
+    }, [myClasses, attendanceRecords]);
 
-    const myOverallAttendanceData = [
-      { date: 'Jan', attendance: 80 },
-      { date: 'Feb', attendance: 82 },
-      { date: 'Mar', attendance: 78 },
-      { date: 'Apr', attendance: 85 },
-      { date: 'May', attendance: 90 },
-    ];
+    const myOverallAttendanceData = useMemo(() => {
+        if (!attendanceRecords || attendanceRecords.length === 0) return [];
+
+        const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
+
+        attendanceRecords.forEach(record => {
+            const month = format(parseISO(record.date), 'MMM');
+            if (!attendanceByMonth[month]) {
+                attendanceByMonth[month] = { present: 0, total: 0 };
+            }
+            attendanceByMonth[month].total++;
+            if (record.status === 'Present') {
+                attendanceByMonth[month].present++;
+            }
+        });
+
+        const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        return monthOrder
+            .filter(month => attendanceByMonth[month])
+            .map(month => {
+                const { present, total } = attendanceByMonth[month];
+                return {
+                    date: month,
+                    attendance: parseFloat(((present / total) * 100).toFixed(1)),
+                };
+            });
+    }, [attendanceRecords]);
 
 
   return (
     <div className="space-y-4">
        <h1 className="text-2xl font-bold tracking-tight font-headline">Faculty Dashboard</h1>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">My Classes</CardTitle>
@@ -77,8 +140,8 @@ export default function FacultyDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.upcomingClass}</div>}
-            <p className="text-xs text-muted-foreground">Today at 10:00 AM</p>
+             {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{myClasses && myClasses.length > 0 ? myClasses[0].name : "N/A"}</div>}
+            <p className="text-xs text-muted-foreground">Next on your schedule</p>
           </CardContent>
         </Card>
       </div>
