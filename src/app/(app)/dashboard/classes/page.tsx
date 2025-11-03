@@ -10,12 +10,83 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDoc, query, where, doc } from "firebase/firestore";
+import { collection, getDocs, query, where, doc } from "firebase/firestore";
 import { AddClassDialog } from "./components/add-class-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { Users } from "lucide-react";
+
+function ClassCard({ cls, studentCount, isLoading }: { cls: Class; studentCount: number; isLoading: boolean}) {
+    return (
+        <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
+            <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
+            <CardHeader>
+                <CardTitle>{cls.name}</CardTitle>
+                <CardDescription>Section {cls.section}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-grow flex items-center gap-2 text-sm text-muted-foreground">
+                {isLoading ? <Skeleton className="h-5 w-16" /> : (
+                    <>
+                        <Users className="h-4 w-4" />
+                        <span>{studentCount} {studentCount === 1 ? 'Student' : 'Students'}</span>
+                    </>
+                )}
+            </CardContent>
+            <CardFooter>
+                 {/* Footer is kept for spacing but is empty */}
+            </CardFooter>
+            </Link>
+        </Card>
+    );
+}
+
+
+function ClassCardSkeleton() {
+    return (
+        <Card>
+            <CardHeader>
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+            </CardHeader>
+            <CardContent>
+                <Skeleton className="h-5 w-16" />
+            </CardContent>
+            <CardFooter>
+                <div className="h-5" />
+            </CardFooter>
+        </Card>
+    );
+}
+
+function useClassStudentCount(classId: string) {
+    const firestore = useFirestore();
+    const [studentCount, setStudentCount] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchCount = useCallback(async () => {
+        if (!firestore || !classId) return;
+        setIsLoading(true);
+        try {
+            const studentsRef = collection(firestore, `classes/${classId}/students`);
+            const studentsSnap = await getDocs(studentsRef);
+            setStudentCount(studentsSnap.size);
+        } catch (error) {
+            console.error("Failed to fetch student count for class", classId, error);
+            setStudentCount(0);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [firestore, classId]);
+
+    useEffect(() => {
+        fetchCount();
+    }, [fetchCount]);
+
+    return { studentCount, isLoading, refetch: fetchCount };
+}
+
 
 export default function ClassManagementPage() {
   const firestore = useFirestore();
@@ -61,6 +132,12 @@ export default function ClassManagementPage() {
   const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
   
   const finalIsLoading = isUserLoadingAuth || isLoadingUserRole || isLoadingClasses || (user?.role === 'admin' && isLoadingFaculty);
+
+  // Component to render individual class with its student count
+    const MemoizedClassCard = ({ cls }: { cls: Class }) => {
+        const { studentCount, isLoading } = useClassStudentCount(cls.id);
+        return <ClassCard cls={cls} studentCount={studentCount} isLoading={isLoading} />;
+    };
   
   return (
     <div className="space-y-4">
@@ -78,40 +155,14 @@ export default function ClassManagementPage() {
 
       {finalIsLoading ? (
          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i}>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent>
-                       <div className="h-10" />
-                    </CardContent>
-                    <CardFooter>
-                       <Skeleton className="h-10 w-full" />
-                    </CardFooter>
-                </Card>
-            ))}
+            {Array.from({ length: 4 }).map((_, i) => <ClassCardSkeleton key={i} />)}
          </div>
       ) : (
         <>
           {classes && classes.length > 0 ? (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {classes.map((cls) => (
-                <Card key={cls.id} className="flex flex-col h-full hover:bg-muted/50 transition-colors">
-                  <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
-                    <CardHeader>
-                      <CardTitle>{cls.name}</CardTitle>
-                      <CardDescription>Section {cls.section}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-grow">
-                      {/* Content removed for simplicity */}
-                    </CardContent>
-                    <CardFooter>
-                        <p className="text-xs text-muted-foreground w-full text-center">Click to manage</p>
-                    </CardFooter>
-                  </Link>
-                </Card>
+                <MemoizedClassCard key={cls.id} cls={cls} />
               ))}
             </div>
           ) : (
