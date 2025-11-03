@@ -89,22 +89,14 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        const path: string =
-          memoizedTargetRefOrQuery.type === 'collection'
-            ? (memoizedTargetRefOrQuery as CollectionReference).path
-            : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString()
-
-        const contextualError = new FirestorePermissionError({
-          operation: 'list',
-          path,
-        });
-
-        setError(contextualError);
+        if (error.code === 'permission-denied') {
+            console.warn(`Firestore Permission Denied: Could not list documents from ${memoizedTargetRefOrQuery.type === 'collection' ? (memoizedTargetRefOrQuery as CollectionReference).path : 'a query'}. Check security rules.`);
+        } else {
+            console.error('useCollection error:', error);
+        }
+        setError(error);
         setData(null);
         setIsLoading(false);
-
-        // Emit the error to the global listener to trigger the error overlay
-        errorEmitter.emit('permission-error', contextualError);
       }
     );
 
