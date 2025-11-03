@@ -22,6 +22,7 @@ import { collection, doc, query, setDoc, where, getDocs, serverTimestamp } from 
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export default function AttendancePage() {
   const { toast } = useToast();
@@ -219,7 +220,7 @@ export default function AttendancePage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className="w-full h-full"></div>
+                <div id="reader" className={cn("w-full h-full", {"hidden": !sessionActive})} />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
@@ -305,5 +306,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
