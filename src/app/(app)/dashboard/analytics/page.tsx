@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
@@ -48,18 +47,9 @@ const formSchema = z.object({
   analysisType: z.enum(["class", "student", "faculty"]),
   targetId: z.string().min(1, "Please select an item."),
   reportFormat: z.enum(["PDF", "Excel"]),
-  visualizationTypes: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: "You have to select at least one visualization type.",
-  }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
-
-const visualizationOptions = [
-  { id: "bar", label: "Bar Chart" },
-  { id: "pie", label: "Pie Chart" },
-  { id: "line", label: "Line Graph" },
-] as const;
 
 
 export default function AnalyticsPage() {
@@ -75,7 +65,6 @@ export default function AnalyticsPage() {
       analysisType: "class",
       targetId: "",
       reportFormat: "PDF",
-      visualizationTypes: ["bar", "line"],
     },
   });
   
@@ -140,7 +129,7 @@ export default function AnalyticsPage() {
           attendanceData: JSON.stringify(attendanceData),
           analysisPreferences: `Focus on ${values.analysisType} with ID ${values.targetId}`,
           reportFormat: values.reportFormat,
-          visualizationTypes: values.visualizationTypes as ('bar' | 'pie' | 'line')[],
+          visualizationTypes: ['bar', 'pie', 'line'], // Defaulting to all types now
         });
 
         setResult(insights);
@@ -289,56 +278,6 @@ export default function AnalyticsPage() {
                     </FormItem>
                   )}
                 />
-                 <FormField
-                    control={form.control}
-                    name="visualizationTypes"
-                    render={() => (
-                        <FormItem>
-                        <div className="mb-3">
-                            <FormLabel>Visualization Types</FormLabel>
-                            <FormDescription>
-                            Select the charts you want to include.
-                            </FormDescription>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 space-y-2 sm:space-y-0">
-                        {visualizationOptions.map((item) => (
-                            <FormField
-                            key={item.id}
-                            control={form.control}
-                            name="visualizationTypes"
-                            render={({ field }) => {
-                                return (
-                                <FormItem
-                                    key={item.id}
-                                    className="flex flex-row items-start space-x-2 space-y-0"
-                                >
-                                    <FormControl>
-                                    <Checkbox
-                                        value={item.id}
-                                        checked={field.value?.includes(item.id)}
-                                        onCheckedChange={(checked) => {
-                                        const updatedValue = checked
-                                            ? [...(field.value || []), item.id]
-                                            : (field.value || []).filter(
-                                                (value) => value !== item.id
-                                              );
-                                        field.onChange(updatedValue);
-                                        }}
-                                    />
-                                    </FormControl>
-                                    <FormLabel className="font-normal">
-                                    {item.label}
-                                    </FormLabel>
-                                </FormItem>
-                                )
-                            }}
-                            />
-                        ))}
-                        </div>
-                        <FormMessage />
-                    </FormItem>
-                    )}
-                    />
               </div>
             </CardContent>
             <CardFooter>

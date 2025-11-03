@@ -15,7 +15,7 @@ const AttendanceInsightsInputSchema = z.object({
   attendanceData: z.string().describe('Attendance data in JSON format, including student IDs, class names, dates, and attendance status.'),
   analysisPreferences: z.string().describe('Preferences for the analysis, such as specific classes, students, or date ranges to focus on.'),
   reportFormat: z.enum(['PDF', 'Excel']).describe('Preferred format for the attendance report.'),
-  visualizationTypes: z.array(z.enum(['bar', 'pie', 'line'])).describe('Types of visualizations to generate (e.g., bar charts, pie charts, line graphs).'),
+  visualizationTypes: z.array(z.enum(['bar', 'pie', 'line'])).optional().describe('Types of visualizations to generate (e.g., bar charts, pie charts, line graphs).'),
 });
 export type AttendanceInsightsInput = z.infer<typeof AttendanceInsightsInputSchema>;
 
@@ -40,7 +40,7 @@ const attendanceAnalyticsInsightsPrompt = ai.definePrompt({
   You will receive attendance data, analysis preferences, and desired report/visualization formats. Your task is to:
 
   1.  Generate a comprehensive attendance report in the specified {{{reportFormat}}} format.
-  2.  Create visualizations ({{{visualizationTypes}}}) to represent attendance trends and statistics.
+  2.  Create visualizations (bar charts, pie charts, and line graphs) to represent attendance trends and statistics.
   3.  Analyze the data to identify students at risk of failing due to poor attendance.
   4.  Highlight significant trends in class attendance, such as patterns of absenteeism or consistently low attendance rates.
 
