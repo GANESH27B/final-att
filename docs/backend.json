@@ -175,7 +175,7 @@
         }
       },
       {
-        "path": "/users/{facultyId}",
+        "path": "/users/{userId}",
         "definition": {
           "entityName": "Faculty",
           "schema": {
@@ -184,8 +184,8 @@
           "description": "Collection for faculty member profiles.",
           "params": [
             {
-              "name": "facultyId",
-              "description": "Firebase Auth UID of the faculty member."
+              "name": "userId",
+              "description": "Firebase Auth UID of the user."
             }
           ]
         }
@@ -206,6 +206,26 @@
             {
               "name": "classId",
               "description": "Unique identifier for the class."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{studentId}/attendance/{attendanceId}",
+        "definition": {
+          "entityName": "Attendance",
+          "schema": {
+            "$ref": "#/backend/entities/Attendance"
+          },
+          "description": "Subcollection for a student's attendance records across all their classes.",
+          "params": [
+            {
+              "name": "studentId",
+              "description": "Firebase Auth UID of the student."
+            },
+            {
+              "name": "attendanceId",
+              "description": "Unique identifier for the attendance record."
             }
           ]
         }
@@ -251,6 +271,8 @@
         }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to ensure security, scalability, and debuggability, following the principles of Authorization Independence, Clarity of Intent, DBAC, and QAPs. It leverages denormalization to avoid hierarchical authorization dependencies and structural segregation to maintain homogeneous security postures within collections.\n\n*   **Authorization Independence**: Achieved through denormalization. For instance, the `Student` documents, located within `classes/{classId}/students/{studentId}`, include the `classId`. This eliminates the need for security rules to traverse up the hierarchy to validate the class. Instead, rules can validate the `classId` directly on the `Student` document, enabling atomic operations.\n\n*   **Structural Segregation**: Each collection houses documents with similar access requirements. For instance, admin roles are stored separately in `/roles_admin/{uid}`. User-owned data (e.g., Classes owned by Faculty) are stored in `/users/{facultyId}/classes/{classId}`. This segregation simplifies security rules by ensuring a consistent security posture within each collection.\n\n*   **QAPs**: Secured list operations are enabled through structural segregation. Only admins can list faculty and students. Faculty can only list students in their class because they are segregated under `/classes/{classId}/students`.\n\n*   **DBAC**: Roles are managed directly in the database via `/roles_admin/{uid}`. This approach avoids reliance on custom claims, adhering to the DBAC principle and keeping authorization simple and auditable.\n\n*   **Invariants**: The structure also supports the integrity of relationships. For example, the `classId` in the `Student` entity maintains the relationship between a student and their class, preventing orphaned student records.\n\n**Justification for Paths:**\n\n*   `/roles_admin/{uid}`: Uses **Existence over Content** for global admin roles. The existence of a document indicates admin privileges.\n*   `/users/{facultyId}/classes/{classId}`: Path-based ownership for faculty-created classes, ensuring only the owning faculty can manage their classes.\n*   `/classes/{classId}/students/{studentId}`: A subcollection for managing students within a class.  Includes denormalized `classId` for authorization independence.\n*   `/classes/{classId}/attendance/{attendanceId}`: Subcollection for attendance records within a class, ensuring clear association and segregation. Includes denormalized `classId` and `studentId` for authorization independence."
+    "reasoning": "The Firestore data structure is designed to ensure security, scalability, and debuggability, following the principles of Authorization Independence, Clarity of Intent, DBAC, and QAPs. It leverages denormalization to avoid hierarchical authorization dependencies and structural segregation to maintain homogeneous security postures within collections.\n\n*   **Authorization Independence**: Achieved through denormalization. For instance, the `Student` documents, located within `classes/{classId}/students/{studentId}`, include the `classId`. This eliminates the need for security rules to traverse up the hierarchy to validate the class. Instead, rules can validate the `classId` directly on the `Student` document, enabling atomic operations.\n\n*   **Structural Segregation**: Each collection houses documents with similar access requirements. For instance, admin roles are stored separately in `/roles_admin/{uid}`. User-owned data (e.g., Classes owned by Faculty) are stored in `/users/{facultyId}/classes/{classId}`. A student's attendance is stored under their user profile at `/users/{studentId}/attendance/{attendanceId}`. This segregation simplifies security rules by ensuring a consistent security posture within each collection.\n\n*   **QAPs**: Secured list operations are enabled through structural segregation. Admins can list faculty and students. Faculty can only list students in their class. Students can list their own attendance records directly.\n\n*   **DBAC**: Roles are managed directly in the database via `/roles_admin/{uid}`. This approach avoids reliance on custom claims, adhering to the DBAC principle and keeping authorization simple and auditable.\n\n*   **Invariants**: The structure also supports the integrity of relationships. For example, the `classId` in the `Student` entity maintains the relationship between a student and their class, preventing orphaned student records.\n\n**Justification for Paths:**\n\n*   `/roles_admin/{uid}`: Uses **Existence over Content** for global admin roles. The existence of a document indicates admin privileges.\n*   `/users/{userId}`: Root collection for all user profiles.\n*   `/users/{facultyId}/classes/{classId}`: Path-based ownership for faculty-created classes, ensuring only the owning faculty can manage their classes.\n*   `/users/{studentId}/attendance/{attendanceId}`: Stores all attendance for a single student, simplifying student-wise queries.\n*   `/classes/{classId}/students/{studentId}`: A subcollection for managing students within a class.  Includes denormalized `classId` for authorization independence.\n*   `/classes/{classId}/attendance/{attendanceId}`: Subcollection for attendance records within a class, ensuring clear association and segregation. Includes denormalized `classId` and `studentId` for authorization independence."
   }
 }
+
+    

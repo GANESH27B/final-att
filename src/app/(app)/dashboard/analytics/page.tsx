@@ -110,16 +110,17 @@ export default function AnalyticsPage() {
         if (analysisType === 'class') {
           attendanceQuery = query(collection(firestore, `classes/${targetId}/attendance`));
         } else if (analysisType === 'student') {
-          attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('studentId', '==', targetId));
+          // Fetch from the student's subcollection
+          attendanceQuery = query(collection(firestore, `users/${targetId}/attendance`));
         } else if (analysisType === 'faculty') {
           // This is more complex, requires getting all classes for a faculty, then all attendance for those classes.
           const facultyClassesQuery = query(collection(firestore, 'classes'), where('facultyId', '==', targetId));
           const facultyClassesSnap = await getDocs(facultyClassesQuery);
           const classIds = facultyClassesSnap.docs.map(doc => doc.id);
           if (classIds.length > 0) {
+            // Using collectionGroup and 'in' query for attendance across multiple classes
             attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
           } else {
-            // No classes for this faculty, so no attendance data.
             toast({ title: "No Data", description: "This faculty member has no classes to analyze." });
             return;
           }
@@ -388,3 +389,5 @@ export default function AnalyticsPage() {
     </div>
   );
 }
+
+    

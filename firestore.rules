@@ -6,6 +6,7 @@
  * - /roles_admin/{uid}: Documents representing admin users. Existence implies admin role.
  * - /users/{userId}: User profiles (admin, faculty, student).
  * - /users/{facultyId}/classes/{classId}: Mirrored class data for faculty ownership.
+ * - /users/{studentId}/attendance/{attendanceId}: A student's attendance records.
  * - /classes/{classId}: Root collection for all classes, allowing easier querying.
  * - /classes/{classId}/students/{studentId}: Students enrolled in a class. Includes denormalized class data.
  * - /classes/{classId}/attendance/{attendanceId}: Attendance records for a class.
@@ -72,6 +73,12 @@ service cloud.firestore {
       allow create: if isAdmin(); // Only admins can create users via the UI.
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
+
+      // Students can read their own attendance, faculty can read/write for their students.
+      match /attendance/{attendanceId} {
+        allow read: if isOwner(userId) || isAdmin() || isClassOwner(resource.data.classId);
+        allow write: if isAdmin() || isClassOwner(resource.data.classId);
+      }
     }
     
     // Faculty can manage the classes listed under their own profile. This enforces ownership.
@@ -120,3 +127,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
