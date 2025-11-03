@@ -113,5 +113,10 @@ service cloud.firestore {
       // We also check for data consistency.
       allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
     }
+
+    // Admin-only collection group queries
+    match /{path=**}/attendance/{docId} {
+      allow get, list: if isAdmin();
+    }
   }
 }

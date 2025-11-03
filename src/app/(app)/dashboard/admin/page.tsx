@@ -10,8 +10,8 @@ import { Users, BookOpen, Percent, TrendingUp, TrendingDown } from "lucide-react
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
-import { User, Class } from "@/lib/types";
+import { collection, collectionGroup } from "firebase/firestore";
+import { User, Class, AttendanceRecord } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from 'date-fns';
@@ -28,11 +28,11 @@ export default function AdminDashboardPage() {
 
     const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
     const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
-    const attendanceQuery = useMemoFirebase(() => firestore ? collection(firestore, 'attendance') : null, [firestore]);
+    const attendanceQuery = useMemoFirebase(() => firestore ? collectionGroup(firestore, 'attendance') : null, [firestore]);
 
     const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
     const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
-    const { data: attendance, isLoading: isLoadingAttendance } = useCollection(attendanceQuery);
+    const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
 
     const isLoading = isLoadingUsers || isLoadingClasses || isLoadingAttendance;
 
@@ -50,7 +50,7 @@ export default function AdminDashboardPage() {
         const totalFaculty = users.filter(u => u.role === 'faculty').length;
         const totalClasses = classes.length;
 
-        const presentCount = attendance.filter(a => a.isPresent).length;
+        const presentCount = attendance.filter(a => a.status === 'Present').length;
         const avgAttendance = attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
 
         return {
@@ -69,7 +69,7 @@ export default function AdminDashboardPage() {
             if (relevantAttendance.length === 0) {
                 return { name: cls.name, attendance: 0 };
             }
-            const presentCount = relevantAttendance.filter(a => a.isPresent).length;
+            const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
             const avg = (presentCount / relevantAttendance.length) * 100;
             return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(classes.indexOf(cls) % 5) + 1}))` };
         });
@@ -97,7 +97,7 @@ export default function AdminDashboardPage() {
                 attendanceByMonth[month] = { present: 0, total: 0 };
             }
             attendanceByMonth[month].total++;
-            if (record.isPresent) {
+            if (record.status === 'Present') {
                 attendanceByMonth[month].present++;
             }
         });
@@ -210,5 +210,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
