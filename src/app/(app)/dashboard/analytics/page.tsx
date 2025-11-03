@@ -1,7 +1,7 @@
 // Using client directive for form interactivity and hooks
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -103,36 +103,33 @@ export default function AnalyticsPage() {
           throw new Error("Firestore is not initialized.");
         }
 
-        let attendanceQuery;
+        let attendanceData: any[] = [];
         const analysisType = values.analysisType;
         const targetId = values.targetId;
 
         if (analysisType === 'class') {
-          attendanceQuery = query(collection(firestore, `classes/${targetId}/attendance`));
+          const attendanceQuery = query(collection(firestore, `classes/${targetId}/attendance`));
+          const attendanceSnap = await getDocs(attendanceQuery);
+          attendanceData = attendanceSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
         } else if (analysisType === 'student') {
-          // Fetch from the student's subcollection
-          attendanceQuery = query(collection(firestore, `users/${targetId}/attendance`));
+          const attendanceQuery = query(collection(firestore, `users/${targetId}/attendance`));
+          const attendanceSnap = await getDocs(attendanceQuery);
+          attendanceData = attendanceSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
         } else if (analysisType === 'faculty') {
-          // This is more complex, requires getting all classes for a faculty, then all attendance for those classes.
           const facultyClassesQuery = query(collection(firestore, 'classes'), where('facultyId', '==', targetId));
           const facultyClassesSnap = await getDocs(facultyClassesQuery);
-          const classIds = facultyClassesSnap.docs.map(doc => doc.id);
-          if (classIds.length > 0) {
-            // Using collectionGroup and 'in' query for attendance across multiple classes
-            attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
-          } else {
+          
+          if (facultyClassesSnap.empty) {
             toast({ title: "No Data", description: "This faculty member has no classes to analyze." });
             return;
           }
-        }
 
-        if (!attendanceQuery) {
-            toast({ title: "No Data", description: "Could not form a query for attendance data." });
-            return;
+          for (const classDoc of facultyClassesSnap.docs) {
+            const attendanceQuery = query(collection(firestore, `classes/${classDoc.id}/attendance`));
+            const attendanceSnap = await getDocs(attendanceQuery);
+            attendanceData.push(...attendanceSnap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+          }
         }
-
-        const attendanceSnap = await getDocs(attendanceQuery);
-        const attendanceData = attendanceSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
 
         if(attendanceData.length === 0) {
             toast({ title: "No Data", description: "No attendance records found for the selected criteria." });
@@ -163,7 +160,7 @@ export default function AnalyticsPage() {
   };
 
   const handleDownloadReport = () => {
-    if (!result) return;
+    if (!result || !result.report) return;
     
     const mimeType = result.reportFormat === 'PDF' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const fileExtension = result.reportFormat === 'PDF' ? '.pdf' : '.xlsx';
@@ -389,5 +386,3 @@ export default function AnalyticsPage() {
     </div>
   );
 }
-
-    
