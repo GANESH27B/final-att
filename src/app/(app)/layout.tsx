@@ -43,23 +43,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
             
-            const isAtDashboardRoot = pathname === '/dashboard';
             const isAuthorized = (role: UserRole, path: string) => {
+                const adminPaths = ['/dashboard/admin', '/dashboard/users', '/dashboard/classes', '/dashboard/analytics'];
+                const facultyPaths = ['/dashboard/faculty', '/dashboard/attendance', '/dashboard/analytics'];
+                const studentPaths = ['/dashboard/student', '/dashboard/my-attendance'];
+
                 if (role === 'admin') {
-                    return path.startsWith('/dashboard/admin') || path.startsWith('/dashboard/users') || path.startsWith('/dashboard/classes') || path.startsWith('/dashboard/analytics');
+                    // Admin can access their paths.
+                    return adminPaths.some(p => path.startsWith(p));
                 }
                 if (role === 'faculty') {
-                    return path.startsWith('/dashboard/faculty') || path.startsWith('/dashboard/attendance') || path.startsWith('/dashboard/analytics');
+                    return facultyPaths.some(p => path.startsWith(p));
                 }
                 if (role === 'student') {
-                    return path.startsWith('/dashboard/student') || path.startsWith('/dashboard/my-attendance');
+                    return studentPaths.some(p => path.startsWith(p));
                 }
                 return false;
             }
 
-            if (isAtDashboardRoot) {
+            if (pathname === '/dashboard' || pathname === '/dashboard/') {
                 router.replace(`/dashboard/${userRole}`);
             } else if (!isAuthorized(userRole, pathname)) {
+                // If user is on a page they are not authorized for, redirect them to their main dashboard.
                 router.replace(`/dashboard/${userRole}`);
             }
           } else {
