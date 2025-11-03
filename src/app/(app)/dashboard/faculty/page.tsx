@@ -1,4 +1,3 @@
-
 "use client"
 import {
   Card,
@@ -11,9 +10,9 @@ import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
-import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
-import { useMemo, useState, useEffect } from "react";
+import { collection, query, where, collectionGroup } from "firebase/firestore";
+import { Class, AttendanceRecord } from "@/lib/types";
+import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from 'date-fns';
 
@@ -42,58 +41,11 @@ export default function FacultyDashboardPage() {
 
     const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
     
-    const [studentCount, setStudentCount] = useState(0);
-    const [isLoadingStudentCount, setIsLoadingStudentCount] = useState(true);
-
-    useEffect(() => {
-        const fetchStudentCount = async () => {
-            if (!firestore || !myClasses) {
-                 if (!isLoadingClasses) {
-                    // If classes are done loading and there are none, count is 0.
-                    setStudentCount(0);
-                    setIsLoadingStudentCount(false);
-                }
-                return;
-            };
-            
-            setIsLoadingStudentCount(true);
-            if (myClasses.length === 0) {
-                setStudentCount(0);
-                setIsLoadingStudentCount(false);
-                return;
-            }
-
-            try {
-                let totalStudents = new Set<string>();
-                const studentCountPromises = myClasses.map(cls => 
-                    getDocs(collection(firestore, `classes/${cls.id}/students`))
-                );
-                const allStudentSnaps = await Promise.all(studentCountPromises);
-                allStudentSnaps.forEach(studentsSnap => {
-                    studentsSnap.forEach(doc => totalStudents.add(doc.id));
-                });
-                setStudentCount(totalStudents.size);
-            } catch (error) {
-                console.error("Error fetching student count:", error);
-                setStudentCount(0);
-            } finally {
-                setIsLoadingStudentCount(false);
-            }
-        };
-
-        // Only run fetchStudentCount if myClasses is defined (i.e., not null)
-        if (myClasses !== null) {
-            fetchStudentCount();
-        }
-    }, [firestore, myClasses, isLoadingClasses]);
-
-
-    const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudentCount;
+    const isLoading = isLoadingClasses || isLoadingAttendance;
 
     const stats = useMemo(() => {
         if (!myClasses || !attendance) {
             return {
-                totalStudents: 0,
                 totalClasses: 0,
                 avgAttendance: 0,
                 upcomingClass: "N/A"
@@ -105,16 +57,14 @@ export default function FacultyDashboardPage() {
         const presentCount = attendance?.filter(a => a.status === 'Present').length || 0;
         const avgAttendance = attendance && attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
         
-        // This is mock data, should be replaced with real scheduling logic
         const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
 
         return {
-            totalStudents: studentCount,
             totalClasses,
             avgAttendance,
             upcomingClass
         };
-    }, [myClasses, attendance, studentCount]);
+    }, [myClasses, attendance]);
     
     const myClassAttendanceData = useMemo(() => {
         if (!myClasses || myClasses.length === 0 || !attendance) return [];
@@ -177,19 +127,7 @@ export default function FacultyDashboardPage() {
   return (
     <div className="space-y-4">
        <h1 className="text-2xl font-bold tracking-tight font-headline">Faculty Dashboard</h1>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">My Students</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.totalStudents}</div>}
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              across {myClasses?.length || 0} classes
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">My Classes</CardTitle>
