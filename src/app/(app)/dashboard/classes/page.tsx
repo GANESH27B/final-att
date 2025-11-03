@@ -33,7 +33,8 @@ export default function ClassManagementPage() {
 
   // Get the user's role from their user document
   useEffect(() => {
-    if (firestore && currentUser) {
+    if (firestore && currentUser && !user) {
+      setIsLoadingUserRole(true);
       const userDocRef = doc(firestore, 'users', currentUser.uid);
       getDoc(userDocRef).then(docSnap => {
         if (docSnap.exists()) {
@@ -41,10 +42,10 @@ export default function ClassManagementPage() {
         }
         setIsLoadingUserRole(false);
       }).catch(() => setIsLoadingUserRole(false));
-    } else if (!isUserLoadingAuth) {
+    } else if (!currentUser && !isUserLoadingAuth) {
       setIsLoadingUserRole(false);
     }
-  }, [firestore, currentUser, isUserLoadingAuth]);
+  }, [firestore, currentUser, isUserLoadingAuth, user]);
 
   // Determine which classes to query based on role
   const classesQuery = useMemoFirebase(() => {
@@ -58,24 +59,22 @@ export default function ClassManagementPage() {
     return null; // Students see no classes on this page
   }, [firestore, user]);
   
-  const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery, !!user);
+  const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
 
   // Fetch all faculty members for the "Add Class" dialog (only for admins)
   const facultyQuery = useMemoFirebase(() => 
     firestore && user?.role === 'admin' ? query(collection(firestore, 'users'), where('role', '==', 'faculty')) : null, 
   [firestore, user]);
-  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery, user?.role === 'admin');
+  const { data: faculty, isLoading: isLoadingFaculty } = useCollection<UserType>(facultyQuery);
   
   const [enrichedClasses, setEnrichedClasses] = useState<EnrichedClass[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
   
   const facultyMap = useMemo(() => {
     const map = new Map<string, string>();
-    // For admin role, we fetch all faculty and create a map.
     if (user?.role === 'admin' && faculty) {
       faculty.forEach(f => map.set(f.id, f.name));
-    } else if (user?.role === 'faculty') {
-      // For faculty, just add themselves to the map.
+    } else if (user?.role === 'faculty' && user) {
       map.set(user.id, user.name);
     }
     return map;
@@ -83,7 +82,10 @@ export default function ClassManagementPage() {
 
 
   const fetchStudentCounts = useCallback(async () => {
-    if (!firestore || !classes || classes.length === 0) return new Map<string, number>();
+    if (!firestore || !classes || classes.length === 0) {
+       if (classes && classes.length === 0) return new Map<string, number>();
+       return null;
+    }
 
     const counts = new Map<string, number>();
     for (const cls of classes) {
@@ -110,10 +112,15 @@ export default function ClassManagementPage() {
         setIsProcessing(true);
         const studentCounts = await fetchStudentCounts();
 
+        if (studentCounts === null) {
+          setIsProcessing(false);
+          return;
+        };
+
         const enriched = classes.map(cls => ({
             ...cls,
             facultyName: facultyMap.get(cls.facultyId) || 'Unknown Faculty',
-            studentCount: studentCounts?.get(cls.id) || 0,
+            studentCount: studentCounts.get(cls.id) || 0,
         }));
         setEnrichedClasses(enriched);
         setIsProcessing(false);
@@ -150,7 +157,7 @@ export default function ClassManagementPage() {
                         <Skeleton className="h-4 w-2/3" />
                     </CardContent>
                     <CardFooter>
-                        <Skeleton className="h-10 w-full" />
+                       <Skeleton className="h-10 w-full" />
                     </CardFooter>
                 </Card>
             ))}
@@ -160,8 +167,8 @@ export default function ClassManagementPage() {
           {enrichedClasses.length > 0 ? (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {enrichedClasses.map((cls) => (
-                <Link key={cls.id} href={`/dashboard/classes/${cls.id}`} passHref>
-                  <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors cursor-pointer">
+                <Card key={cls.id} className="flex flex-col h-full hover:bg-muted/50 transition-colors">
+                  <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
                     <CardHeader>
                       <CardTitle>{cls.name}</CardTitle>
                       <CardDescription>Section {cls.section}</CardDescription>
@@ -179,8 +186,8 @@ export default function ClassManagementPage() {
                     <CardFooter>
                         <p className="text-xs text-muted-foreground w-full text-center">Click to manage</p>
                     </CardFooter>
-                  </Card>
-                </Link>
+                  </Link>
+                </Card>
               ))}
             </div>
           ) : (
