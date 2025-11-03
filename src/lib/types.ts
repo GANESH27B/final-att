@@ -20,8 +20,10 @@ export type Class = {
 
 export type AttendanceRecord = {
   id: string;
-  studentName: string;
+  studentName?: string; // Made optional as it might not be on every record
   studentId: string;
+  classId: string;
+  facultyId: string;
   date: string;
   status: "Present" | "Absent";
 };

@@ -131,13 +131,18 @@
           "type": "string",
           "description": "Reference to Class. (Relationship: Class 1:N Attendance)"
         },
+        "facultyId": {
+            "type": "string",
+            "description": "Denormalized reference to the Faculty who owns the class."
+        },
         "date": {
           "type": "string",
           "description": "Date of the attendance record.",
           "format": "date-time"
         },
-        "isPresent": {
-          "type": "boolean",
+        "status": {
+          "type": "string",
+          "enum": ["Present", "Absent"],
           "description": "Indicates whether the student was present or absent."
         }
       },
@@ -145,8 +150,9 @@
         "id",
         "studentId",
         "classId",
+        "facultyId",
         "date",
-        "isPresent"
+        "status"
       ]
     }
   },
@@ -275,4 +281,3 @@
   }
 }
 
-    

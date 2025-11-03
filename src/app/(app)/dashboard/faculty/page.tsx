@@ -36,12 +36,31 @@ export default function FacultyDashboardPage() {
 
     const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
 
-    const attendanceQuery = useMemoFirebase(() => 
-        firestore && user ? query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid)) : null,
-        [firestore, user]
-    );
-    const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
-    
+    const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+    const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
+
+    const fetchAttendanceForClasses = useCallback(async () => {
+        if (!firestore || !myClasses) return;
+
+        setIsLoadingAttendance(true);
+        let allAttendance: AttendanceRecord[] = [];
+        for (const cls of myClasses) {
+            const attendanceRef = collection(firestore, `classes/${cls.id}/attendance`);
+            const attendanceSnap = await getDocs(attendanceRef);
+            allAttendance.push(...attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord)));
+        }
+        setAttendance(allAttendance);
+        setIsLoadingAttendance(false);
+    }, [firestore, myClasses]);
+
+    useEffect(() => {
+        if (myClasses) {
+            fetchAttendanceForClasses();
+        } else if (!isLoadingClasses) {
+            setIsLoadingAttendance(false);
+        }
+    }, [myClasses, isLoadingClasses, fetchAttendanceForClasses]);
+
     const [studentCount, setStudentCount] = useState(0);
     const [isLoadingStudentCount, setIsLoadingStudentCount] = useState(true);
 
@@ -244,5 +263,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
