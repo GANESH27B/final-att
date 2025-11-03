@@ -158,29 +158,27 @@ export default function ClassManagementPage() {
           {enrichedClasses.length > 0 ? (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {enrichedClasses.map((cls) => (
-                <Card key={cls.id} className="flex flex-col">
-                  <CardHeader>
-                    <CardTitle>{cls.name}</CardTitle>
-                    <CardDescription>Section {cls.section}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-grow">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <User className="h-4 w-4" />
-                      <span>{cls.facultyName}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                      <Users className="h-4 w-4" />
-                      <span>{cls.studentCount} Students</span>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Link href={`/dashboard/classes/${cls.id}`} passHref className="w-full">
-                      <Button variant="outline" className="w-full">
-                        Manage Class
-                      </Button>
-                    </Link>
-                  </CardFooter>
-                </Card>
+                <Link key={cls.id} href={`/dashboard/classes/${cls.id}`} passHref>
+                  <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
+                    <CardHeader>
+                      <CardTitle>{cls.name}</CardTitle>
+                      <CardDescription>Section {cls.section}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-grow">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="h-4 w-4" />
+                        <span>{cls.facultyName}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                        <Users className="h-4 w-4" />
+                        <span>{cls.studentCount} Students</span>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                        <p className="text-xs text-muted-foreground w-full text-center">Click to manage</p>
+                    </CardFooter>
+                  </Card>
+                </Link>
               ))}
             </div>
           ) : (
