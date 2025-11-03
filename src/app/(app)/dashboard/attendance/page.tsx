@@ -39,7 +39,7 @@ const scannerConfig = {
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
       Html5QrcodeSupportedFormats.EAN_13,
-      HtmlS5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_A,
   ]
 };
 
@@ -385,4 +385,3 @@ export default function AttendancePage() {
   );
 }
 
-    
