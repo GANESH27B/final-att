@@ -182,7 +182,9 @@ export default function AttendancePage() {
     setLastScanResult(null);
     setHasCameraPermission(null);
     if (scannerRef.current?.isScanning) {
-        scannerRef.current.stop().then(() => scannerRef.current = null);
+        scannerRef.current.stop().then(() => {
+          scannerRef.current = null
+        });
     }
     toast({
         title: "Session Ended",
@@ -398,5 +400,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
