@@ -61,17 +61,19 @@ export function useCollection<T = any>(
   type StateDataType = ResultItemType[] | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(enabled);
+  const [isLoading, setIsLoading] = useState<boolean>(true); // Start as true
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   useEffect(() => {
+    // This guard is critical. If the query isn't ready, we stop, clear state, and set loading to false.
     if (!memoizedTargetRefOrQuery || !enabled) {
       setData(null);
-      setIsLoading(false);
       setError(null);
+      setIsLoading(false); // Explicitly set loading to false when not fetching.
       return;
     }
 
+    // If we have a query, set loading to true before starting the fetch.
     setIsLoading(true);
     setError(null);
 

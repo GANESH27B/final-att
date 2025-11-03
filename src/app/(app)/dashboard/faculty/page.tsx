@@ -35,7 +35,7 @@ export default function FacultyDashboardPage() {
     );
     const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(myClassesQuery);
 
-    // 2. Fetch attendance records for this faculty's classes
+    // 2. Fetch all attendance records for this faculty member's classes using a collection group query
     const attendanceQuery = useMemoFirebase(() =>
         firestore && user ? query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid)) : null,
         [firestore, user]
@@ -65,7 +65,7 @@ export default function FacultyDashboardPage() {
         const classAttendance = myClasses.map((cls, index) => {
             const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
             if (relevantAttendance.length === 0) {
-                return { name: cls.name, attendance: 0 };
+                return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
             }
             const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
             const avg = (presentCount / relevantAttendance.length) * 100;
@@ -82,13 +82,17 @@ export default function FacultyDashboardPage() {
         const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
 
         attendanceRecords.forEach(record => {
-            const month = format(parseISO(record.date), 'MMM');
-            if (!attendanceByMonth[month]) {
-                attendanceByMonth[month] = { present: 0, total: 0 };
-            }
-            attendanceByMonth[month].total++;
-            if (record.status === 'Present') {
-                attendanceByMonth[month].present++;
+            try {
+                const month = format(parseISO(record.date), 'MMM');
+                if (!attendanceByMonth[month]) {
+                    attendanceByMonth[month] = { present: 0, total: 0 };
+                }
+                attendanceByMonth[month].total++;
+                if (record.status === 'Present') {
+                    attendanceByMonth[month].present++;
+                }
+            } catch (e) {
+                // Ignore records with invalid date formats
             }
         });
 
@@ -162,7 +166,11 @@ export default function FacultyDashboardPage() {
                        <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
                        <YAxis domain={[0, 100]} unit="%" />
                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                       <Bar dataKey="attendance" radius={8} />
+                       <Bar dataKey="attendance" radius={8}>
+                         {myClassAttendanceData.map((entry) => (
+                            <Bar key={entry.name} dataKey="attendance" fill={entry.fill} />
+                         ))}
+                       </Bar>
                     </BarChart>
                 </ChartContainer>
              ) : (
@@ -202,5 +210,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
