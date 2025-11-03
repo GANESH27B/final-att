@@ -19,7 +19,6 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
-import { useParams } from 'next/navigation';
 import { Class, User as UserType } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, MoreHorizontal, User as UserIcon } from 'lucide-react';
@@ -38,10 +37,9 @@ import {
 import { EditStudentDialog } from './components/edit-student-dialog';
 import { RemoveStudentDialog } from './components/remove-student-dialog';
 
-export default function ManageClassPage() {
+export default function ManageClassPage({ params }: { params: { classId: string } }) {
   const firestore = useFirestore();
-  const params = useParams();
-  const classId = params.classId as string;
+  const classId = params.classId;
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
