@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { UserRole } from "@/lib/types";
+import { UserRole, User } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Loader2 } from "lucide-react";
@@ -19,33 +19,39 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading: userLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
+    // Wait until Firebase Auth has determined the user's status.
     if (userLoading) {
-        setLoading(true);
-        return; 
-    }
-
-    if (!user) {
-      router.push("/login");
+      setLoading(true);
       return;
     }
 
-    if (firestore && user && !role) {
+    // If auth is ready and there's no user, redirect to login.
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    // If we have a user but haven't fetched their role from Firestore yet.
+    if (firestore && user && !userData) {
       const userDocRef = doc(firestore, "users", user.uid);
       getDoc(userDocRef)
         .then((docSnap) => {
           if (docSnap.exists()) {
-            const userData = docSnap.data();
-            const userRole = userData.role as UserRole;
-            setRole(userRole);
+            const userRoleData = { id: docSnap.id, ...docSnap.data() } as User;
+            setUserData(userRoleData);
           } else {
-             // This might happen if the user doc isn't created yet.
-             // The dashboard redirector will handle sending them back to login.
-             console.log("User document not found, waiting for creation...");
+             // This might happen if the user doc isn't created yet or was deleted.
+             toast({
+                variant: "destructive",
+                title: "User Data Not Found",
+                description: "Your user profile could not be loaded. Please log in again.",
+             });
+             router.push("/login");
           }
         })
         .catch((e) => {
@@ -65,17 +71,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             }
         })
         .finally(() => {
+          // This will be set to false regardless of success/fail,
+          // the other checks will handle redirection if needed.
           setLoading(false);
         });
-    } else if (role) {
-        setLoading(false);
-    } else if (!userLoading && !user) {
-        // Explicitly handle the case where loading is done and there's no user
+    } else if (userData) {
+        // User and their role data are loaded.
         setLoading(false);
     }
-  }, [user, userLoading, firestore, router, toast, role]);
+  }, [user, userLoading, firestore, router, toast, userData]);
 
-  if (loading || !user || !role) {
+  // This is the main loading gate. It shows a loader if either Firebase Auth is working
+  // or if we are in the process of fetching the user's role from Firestore.
+  // It only proceeds to render children when both are complete and successful.
+  if (loading || userLoading || !userData) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -88,7 +97,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <SidebarNav role={role} />
+      <SidebarNav role={userData.role} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur-sm sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
            <div className="flex items-center gap-2 md:hidden">
@@ -115,5 +124,3 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </SidebarProvider>
   );
 }
-
-    
