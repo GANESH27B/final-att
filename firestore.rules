@@ -95,14 +95,8 @@ service cloud.firestore {
         // Read: Admins, the owning faculty, or an enrolled student can read a class doc.
         allow get: if isAdmin() || isClassOwner(classId) || exists(/databases/$(database)/documents/classes/$(classId)/students/$(request.auth.uid));
         
-        // List: Admins, Faculty, and Students (with a query constraint) can list classes.
-        allow list: if isAdmin() || isFaculty() || (
-          // Students can list classes, but only if they query for their own user ID in the subcollection.
-          // This rule is not directly enforceable here, but the app query must be correct.
-          // The `get` rule above provides the actual document-level security.
-          // A more secure list rule would check `request.query`.
-          request.auth != null
-        );
+        // List: Admins and Faculty can list classes they own. Students can list classes they are in.
+        allow list: if isAdmin() || isFaculty();
         
         // Write: Only Admins or the assigned faculty can create/update/delete.
         allow create, update: if isAdmin() || isClassOwner(classId);
@@ -134,7 +128,8 @@ service cloud.firestore {
     // Admins can query all attendance.
     // Faculty can query for records they own.
     match /{path=**}/attendance/{docId} {
-      allow get, list: if isAdmin() || (isFaculty() && get(/databases/$(database)/documents/$(path)/$(docId)).data.facultyId == request.auth.uid);
+      allow list: if isAdmin() || (isFaculty() && request.query.where.get('facultyId')[2] == request.auth.uid);
+      allow get: if isAdmin() || (isFaculty() && get(/databases/$(database)/documents/$(path)/$(docId)).data.facultyId == request.auth.uid);
     }
   }
 }

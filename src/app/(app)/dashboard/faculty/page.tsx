@@ -65,12 +65,14 @@ export default function FacultyDashboardPage() {
             });
             setStudentCount(totalStudents.size);
         } catch (error: any) {
-            if (error.code === 'permission-denied') {
+             if (error.code === 'permission-denied') {
                 const permissionError = new FirestorePermissionError({
                     path: 'classes/{classId}/students (multiple)',
                     operation: 'list',
                 });
                 errorEmitter.emit('permission-error', permissionError);
+            } else {
+                console.error("Error fetching student count:", error);
             }
             setStudentCount(0);
         } finally {
