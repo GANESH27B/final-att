@@ -42,7 +42,7 @@ const adminNav = [
 const facultyNav = [
   { href: "/dashboard/faculty", icon: Home, label: "Dashboard" },
   { href: "/dashboard/attendance", icon: ScanLine, label: "Take Attendance" },
-  { href: "/dashboard/analytics", icon: BarChart2, label: "My Classes" },
+  { href: "/dashboard/classes", icon: BookOpen, label: "My Classes" },
 ];
 
 const studentNav = [
@@ -83,7 +83,7 @@ export function SidebarNav({ role = "admin" }: SidebarNavProps) {
             <SidebarMenuItem key={item.label}>
               <Link href={item.href}>
                 <SidebarMenuButton
-                  isActive={pathname === item.href}
+                  isActive={pathname.startsWith(item.href)}
                   tooltip={item.label}
                 >
                   <item.icon />
