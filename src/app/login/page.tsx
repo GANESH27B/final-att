@@ -41,42 +41,16 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 export default function LoginPage() {
-  const { user, loading } = useUser();
+  const { user, isUserLoading } = useUser();
   const router = useRouter();
-  const firestore = useFirestore();
-  const { toast } = useToast();
 
   React.useEffect(() => {
-    if (user && firestore) {
-      const userDocRef = doc(firestore, "users", user.uid);
-      getDoc(userDocRef).then((docSnap) => {
-        if (docSnap.exists()) {
-          const userData = docSnap.data();
-          const role = userData.role as UserRole;
-          router.push(`/dashboard/${role}`);
-        } else {
-          // Handle case where user is authenticated but has no user document
-          router.push('/login'); // Or a profile setup page
-        }
-      }).catch((e) => {
-        if (e.code === 'permission-denied') {
-            const permissionError = new FirestorePermissionError({
-              path: userDocRef.path,
-              operation: 'get',
-            });
-            errorEmitter.emit('permission-error', permissionError);
-        } else {
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: e.message,
-            });
-        }
-      });
+    if (user) {
+      router.push('/dashboard');
     }
-  }, [user, firestore, router, toast]);
+  }, [user, router]);
 
-  if (loading || user) {
+  if (isUserLoading || user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -110,7 +84,6 @@ export default function LoginPage() {
 
 function LoginForm() {
   const auth = useAuth();
-  const firestore = useFirestore();
   const { toast } = useToast();
   const router = useRouter();
   const [email, setEmail] = React.useState("");
@@ -120,19 +93,12 @@ function LoginForm() {
   
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !firestore) return;
+    if (!auth) return;
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const userDocRef = doc(firestore, "users", user.uid);
-      const docSnap = await getDoc(userDocRef);
-      if (docSnap.exists()) {
-        const role = docSnap.data().role as UserRole;
-        router.push(`/dashboard/${role}`);
-      } else {
-         router.push('/login');
-      }
+      await signInWithEmailAndPassword(auth, email, password);
+      // On success, the useUser hook in LoginPage will trigger the redirect.
+      router.push('/dashboard');
     } catch (error: any) {
        if (error.code === 'permission-denied') {
             const permissionError = new FirestorePermissionError({
@@ -153,7 +119,10 @@ function LoginForm() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth || !firestore) return;
+    if (!auth) return;
+    const firestore = useFirestore();
+    if (!firestore) return;
+
     setGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
@@ -161,7 +130,7 @@ function LoginForm() {
       const user = result.user;
       const userDocRef = doc(firestore, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
-      let role: UserRole = 'student';
+
       if (!userDoc.exists()) {
         const newUser = {
           name: user.displayName,
@@ -178,18 +147,14 @@ function LoginForm() {
               requestResourceData: newUser,
             });
             errorEmitter.emit("permission-error", permissionError);
-            // throw the error to prevent redirection
-            throw permissionError;
+            throw permissionError; // throw the error to prevent redirection
           }
           throw e; // re-throw other errors
         });
-      } else {
-        role = userDoc.data().role as UserRole;
       }
-      router.push(`/dashboard/${role}`);
+      router.push('/dashboard');
     } catch (error: any) {
       if (error instanceof FirestorePermissionError) {
-        // This was already handled, just re-throwing to stop execution
         return;
       }
       if (error.code === 'permission-denied') {
@@ -198,7 +163,7 @@ function LoginForm() {
             operation: 'get',
           });
         errorEmitter.emit('permission-error', permissionError);
-      } else if (error.code !== 'auth/popup-closed-by-user') { // Don't show toast if user closes popup
+      } else if (error.code !== 'auth/popup-closed-by-user') { 
           toast({
             variant: "destructive",
             title: "Google Sign-In Failed",
@@ -349,7 +314,7 @@ function SignUpForm() {
         description: "You have been successfully signed up.",
       });
 
-      router.push(`/dashboard/${role}`);
+      router.push('/dashboard');
     } catch (error: any) {
       if (error.code === 'permission-denied') {
         const uid = auth.currentUser!.uid;
@@ -464,5 +429,3 @@ function SignUpForm() {
     </Card>
   );
 }
-
-    

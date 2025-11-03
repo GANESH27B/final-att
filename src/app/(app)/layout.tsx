@@ -6,12 +6,12 @@ import { UserNav } from "@/components/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UserRole } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Shield } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
 
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,11 +30,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     if (!user) {
       router.push("/login");
-      setLoading(false);
       return;
     }
 
-    if (firestore && user) {
+    if (firestore && user && !role) {
       const userDocRef = doc(firestore, "users", user.uid);
       getDoc(userDocRef)
         .then((docSnap) => {
@@ -43,7 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
           } else {
-             router.push("/login");
+             // This might happen if the user doc isn't created yet.
+             // The dashboard redirector will handle sending them back to login.
+             console.log("User document not found, waiting for creation...");
           }
         })
         .catch((e) => {
@@ -57,7 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 toast({
                     variant: "destructive",
                     title: "Error",
-                    description: "Could not fetch user data.",
+                    description: "Could not fetch user data. Redirecting to login.",
                 });
                 router.push("/login");
             }
@@ -65,13 +66,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .finally(() => {
           setLoading(false);
         });
+    } else if (role) {
+        setLoading(false);
     }
-  }, [user, userLoading, firestore, router, toast]);
+  }, [user, userLoading, firestore, router, toast, role]);
 
   if (loading || !user || !role) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p>Loading...</p>
+        <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground">Loading...</p>
+        </div>
       </div>
     );
   }

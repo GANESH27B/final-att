@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 export default function DashboardRedirector() {
   const { user, isUserLoading: loading } = useUser();
@@ -25,10 +26,22 @@ export default function DashboardRedirector() {
         if (docSnap.exists()) {
           const userData = docSnap.data();
           const role = userData.role as UserRole;
-          router.replace(`/dashboard/${role}`);
+          // Redirect to the role-specific dashboard.
+          if (role === 'admin') {
+            router.replace('/dashboard/admin');
+          } else if (role === 'faculty') {
+            router.replace('/dashboard/faculty');
+          } else if (role === 'student') {
+            router.replace('/dashboard/student');
+          } else {
+             toast({
+                variant: 'destructive',
+                title: 'Unknown user role',
+                description: 'Could not determine your dashboard.',
+             });
+             router.replace('/login');
+          }
         } else {
-          // If user is authenticated but has no firestore doc, send to login to re-auth
-          // which might create the user doc.
           toast({
             variant: 'destructive',
             title: 'User data not found',
@@ -57,7 +70,10 @@ export default function DashboardRedirector() {
 
   return (
     <div className="flex h-screen items-center justify-center">
-      <p>Loading your dashboard...</p>
+       <div className="flex flex-col items-center gap-2">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <p className="text-muted-foreground">Loading your dashboard...</p>
+      </div>
     </div>
   );
 }
