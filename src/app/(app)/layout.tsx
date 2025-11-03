@@ -34,7 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (firestore) {
+    if (firestore && user) {
       const userDocRef = doc(firestore, "users", user.uid);
       getDoc(userDocRef)
         .then((docSnap) => {
@@ -43,21 +43,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRole = userData.role as UserRole;
             setRole(userRole);
             
-            // More stable redirection logic to prevent loops
-            const baseRolePath = `/dashboard/${userRole}`;
-            const isStudentOnMyAttendance = userRole === 'student' && pathname.startsWith('/dashboard/my-attendance');
-
-            // Admins can go anywhere in the dashboard. Only redirect if they land on the root dashboard page.
-            if (userRole === 'admin' && pathname === '/dashboard') {
-                router.replace('/dashboard/admin');
-            } 
-            // Other roles should be on their specific dashboard page or allowed sub-pages.
-            else if (userRole !== 'admin' && pathname !== baseRolePath && !isStudentOnMyAttendance) {
-                 if (pathname !== '/dashboard') { // Avoid redirect loops from the base dashboard
-                    router.replace(baseRolePath);
-                 }
+            const isAtDashboardRoot = pathname === '/dashboard';
+            const isAuthorized = (role: UserRole, path: string) => {
+                if (role === 'admin') {
+                    return path.startsWith('/dashboard/admin') || path.startsWith('/dashboard/users') || path.startsWith('/dashboard/classes') || path.startsWith('/dashboard/analytics');
+                }
+                if (role === 'faculty') {
+                    return path.startsWith('/dashboard/faculty') || path.startsWith('/dashboard/attendance') || path.startsWith('/dashboard/analytics');
+                }
+                if (role === 'student') {
+                    return path.startsWith('/dashboard/student') || path.startsWith('/dashboard/my-attendance');
+                }
+                return false;
             }
 
+            if (isAtDashboardRoot) {
+                router.replace(`/dashboard/${userRole}`);
+            } else if (!isAuthorized(userRole, pathname)) {
+                router.replace(`/dashboard/${userRole}`);
+            }
           } else {
              // If user is authenticated but has no firestore doc, send to login
              router.push("/login");
