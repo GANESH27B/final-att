@@ -130,9 +130,11 @@ service cloud.firestore {
       allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
     }
 
-    // Admin-only collection group queries
+    // Collection group queries for attendance.
+    // Admins can query all attendance.
+    // Faculty can query for records they own.
     match /{path=**}/attendance/{docId} {
-      allow get, list: if isAdmin();
+      allow get, list: if isAdmin() || (isFaculty() && get(/databases/$(database)/documents/$(path)/$(docId)).data.facultyId == request.auth.uid);
     }
   }
 }

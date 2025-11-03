@@ -35,48 +35,13 @@ export default function FacultyDashboardPage() {
 
     const { data: myClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
 
-    const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-    const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
+    const attendanceQuery = useMemoFirebase(() => {
+        if (!firestore || !user?.uid) return null;
+        return query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid));
+    }, [firestore, user?.uid]);
 
-    const fetchAttendanceForClasses = useCallback(() => {
-        if (!firestore || !myClasses || !user?.uid) return;
-
-        setIsLoadingAttendance(true);
-        if (myClasses.length === 0) {
-            setAttendance([]);
-            setIsLoadingAttendance(false);
-            return;
-        }
-
-        const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('facultyId', '==', user.uid));
-        
-        getDocs(attendanceQuery)
-            .then(attendanceSnap => {
-                const allAttendance: AttendanceRecord[] = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-                setAttendance(allAttendance);
-            })
-            .catch(error => {
-                const permissionError = new FirestorePermissionError({
-                    path: 'attendance (collection group)',
-                    operation: 'list',
-                });
-                errorEmitter.emit('permission-error', permissionError);
-                setAttendance([]);
-            })
-            .finally(() => {
-                setIsLoadingAttendance(false);
-            });
-    }, [firestore, myClasses, user?.uid]);
-
-    useEffect(() => {
-        if (myClasses) {
-            fetchAttendanceForClasses();
-        } else if (!isLoadingClasses) {
-            // No classes found, so attendance fetching is done.
-            setIsLoadingAttendance(false);
-        }
-    }, [myClasses, isLoadingClasses, fetchAttendanceForClasses]);
-
+    const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
+    
     const [studentCount, setStudentCount] = useState(0);
     const [isLoadingStudentCount, setIsLoadingStudentCount] = useState(true);
 
@@ -91,25 +56,22 @@ export default function FacultyDashboardPage() {
 
         try {
             let totalStudents = new Set<string>();
-            // This can be slow if there are many classes.
-            // Using Promise.all to fetch student counts in parallel.
             const studentCountPromises = myClasses.map(cls => 
                 getDocs(collection(firestore, `classes/${cls.id}/students`))
             );
-
             const allStudentSnaps = await Promise.all(studentCountPromises);
-            
             allStudentSnaps.forEach(studentsSnap => {
                 studentsSnap.forEach(doc => totalStudents.add(doc.id));
             });
-
             setStudentCount(totalStudents.size);
-        } catch (error) {
-            const permissionError = new FirestorePermissionError({
-                path: 'classes/{classId}/students (multiple)',
-                operation: 'list',
-            });
-            errorEmitter.emit('permission-error', permissionError);
+        } catch (error: any) {
+            if (error.code === 'permission-denied') {
+                const permissionError = new FirestorePermissionError({
+                    path: 'classes/{classId}/students (multiple)',
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            }
             setStudentCount(0);
         } finally {
             setIsLoadingStudentCount(false);
@@ -138,8 +100,8 @@ export default function FacultyDashboardPage() {
 
         const totalClasses = myClasses.length;
 
-        const presentCount = attendance.filter(a => a.status === 'Present').length;
-        const avgAttendance = attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
+        const presentCount = attendance?.filter(a => a.status === 'Present').length || 0;
+        const avgAttendance = attendance && attendance.length > 0 ? (presentCount / attendance.length) * 100 : 0;
         
         const upcomingClass = myClasses.length > 0 ? myClasses[0].name : "None";
 
@@ -152,7 +114,7 @@ export default function FacultyDashboardPage() {
     }, [myClasses, attendance, studentCount]);
     
     const myClassAttendanceData = useMemo(() => {
-        if (!myClasses || myClasses.length === 0) return [];
+        if (!myClasses || myClasses.length === 0 || !attendance) return [];
     
         return myClasses.map((cls, index) => {
             const relevantAttendance = attendance.filter(a => a.classId === cls.id);
