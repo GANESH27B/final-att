@@ -37,11 +37,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { mockClasses, mockUsers } from "@/lib/data";
 import { Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useFormStatus } from "react-dom";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { collection } from "firebase/firestore";
+import { Class, User } from "@/lib/types";
 
 const formSchema = z.object({
   analysisType: z.enum(["class", "student", "faculty"]),
@@ -67,6 +69,8 @@ type ActionState = {
 
 export default function AnalyticsPage() {
   const { toast } = useToast();
+  const firestore = useFirestore();
+
   const [state, formAction, isPending] = useActionState(handleGenerateReport, {
     data: null,
   });
@@ -80,6 +84,16 @@ export default function AnalyticsPage() {
       visualizationTypes: ["bar", "line"],
     },
   });
+  
+  const classesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'classes') : null, [firestore]);
+  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+
+  const { data: classesData, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+  const { data: usersData, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
+
+  const students = usersData?.filter(u => u.role === 'student') || [];
+  const faculty = usersData?.filter(u => u.role === 'faculty') || [];
+
 
   const analysisType = form.watch("analysisType");
   
@@ -125,6 +139,8 @@ export default function AnalyticsPage() {
       return { data: null };
     }
   }
+
+  const isLoading = isLoadingClasses || isLoadingUsers;
 
   return (
     <div className="space-y-6">
@@ -173,16 +189,16 @@ export default function AnalyticsPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Select {analysisType}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={`Select a ${analysisType}...`} />
+                            <SelectValue placeholder={isLoading ? `Loading...` : `Select a ${analysisType}...`} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {analysisType === 'class' && mockClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                          {analysisType === 'student' && mockUsers.filter(u=>u.role==='student').map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                          {analysisType === 'faculty' && mockUsers.filter(u=>u.role==='faculty').map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                          {analysisType === 'class' && classesData?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                          {analysisType === 'student' && students.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                          {analysisType === 'faculty' && faculty.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <FormMessage />
