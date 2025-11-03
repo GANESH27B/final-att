@@ -15,9 +15,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { mockStudentAttendance, overallAttendanceData } from "@/lib/data";
+import { LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { collection } from "firebase/firestore";
+import { AttendanceRecord, Class } from "@/lib/types";
+import { useMemo } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format, parseISO } from "date-fns";
 
 const chartConfig = {
   attendance: {
@@ -27,7 +32,161 @@ const chartConfig = {
 }
 
 export default function MyAttendancePage() {
-  const overallPercentage = (mockStudentAttendance.reduce((acc, curr) => acc + curr.percentage, 0) / mockStudentAttendance.length).toFixed(1);
+  const firestore = useFirestore();
+  const { user } = useUser();
+
+  const studentAttendanceQuery = useMemoFirebase(() => 
+    firestore && user ? collection(firestore, `users/${user.uid}/attendance`) : null,
+    [firestore, user]
+  );
+  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
+  
+  const classesQuery = useMemoFirebase(() => 
+    firestore ? collection(firestore, 'classes') : null,
+    [firestore]
+  );
+  const { data: allClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
+
+  const isLoading = isLoadingAttendance || isLoadingClasses;
+
+  const classMap = useMemo(() => {
+    if (!allClasses) return new Map<string, Class>();
+    return new Map(allClasses.map(c => [c.id, c]));
+  }, [allClasses]);
+
+  const subjectWiseAttendance = useMemo(() => {
+    if (!attendanceRecords || !classMap.size) return [];
+
+    const statsByClass: { [classId: string]: { attended: number, total: number } } = {};
+
+    // Assuming a simple model where each record is a class session
+    const uniqueDatesByClass: { [classId: string]: Set<string> } = {};
+
+    attendanceRecords.forEach(record => {
+      if (!uniqueDatesByClass[record.classId]) {
+        uniqueDatesByClass[record.classId] = new Set();
+      }
+      uniqueDatesByClass[record.classId].add(record.date);
+
+      if (!statsByClass[record.classId]) {
+        statsByClass[record.classId] = { attended: 0, total: 0 };
+      }
+       if (record.status === 'Present') {
+        statsByClass[record.classId].attended++;
+      }
+    });
+
+     Object.keys(uniqueDatesByClass).forEach(classId => {
+        if(statsByClass[classId]) {
+            statsByClass[classId].total = uniqueDatesByClass[classId].size;
+        }
+    });
+
+    return Object.entries(statsByClass).map(([classId, stats]) => {
+      const classInfo = classMap.get(classId);
+      // Here we assume total classes might need to be fetched or is known.
+      // For this dynamic version, we'll calculate percentage based on records we have.
+      // A more robust solution might store total conducted classes elsewhere.
+      const percentage = stats.total > 0 ? (stats.attended / stats.total) * 100 : 0;
+      return {
+        subject: classInfo?.name || 'Unknown Class',
+        totalClasses: stats.total,
+        attendedClasses: stats.attended,
+        percentage: parseFloat(percentage.toFixed(1)),
+      };
+    });
+  }, [attendanceRecords, classMap]);
+  
+  const overallStats = useMemo(() => {
+    if (subjectWiseAttendance.length === 0) {
+      return {
+        overallPercentage: 0,
+        totalAttended: 0,
+        totalClasses: 0,
+        lowestAttendanceSubject: { subject: 'N/A', percentage: 0 },
+      };
+    }
+
+    const totalAttended = subjectWiseAttendance.reduce((acc, curr) => acc + curr.attendedClasses, 0);
+    const totalClasses = subjectWiseAttendance.reduce((acc, curr) => acc + curr.totalClasses, 0);
+    const overallPercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 0;
+    
+    const lowestAttendanceSubject = [...subjectWiseAttendance].sort((a,b) => a.percentage - b.percentage)[0] || { subject: 'N/A', percentage: 0 };
+
+    return {
+      overallPercentage: parseFloat(overallPercentage.toFixed(1)),
+      totalAttended,
+      totalClasses,
+      lowestAttendanceSubject,
+    };
+  }, [subjectWiseAttendance]);
+
+  const monthlyTrendData = useMemo(() => {
+    if (!attendanceRecords) return [];
+
+    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
+    const uniqueDaysByMonth: { [key: string]: Set<string> } = {};
+
+    attendanceRecords.forEach(record => {
+        const month = format(parseISO(record.date), 'MMM');
+        const day = record.date;
+
+        if (!uniqueDaysByMonth[month]) {
+            uniqueDaysByMonth[month] = new Set();
+        }
+        uniqueDaysByMonth[month].add(day);
+
+        if (!attendanceByMonth[month]) {
+            attendanceByMonth[month] = { present: 0, total: 0 };
+        }
+        if (record.status === 'Present') {
+            attendanceByMonth[month].present++;
+        }
+    });
+
+    Object.keys(uniqueDaysByMonth).forEach(month => {
+        if(attendanceByMonth[month]) {
+            attendanceByMonth[month].total = uniqueDaysByMonth[month].size;
+        }
+    });
+
+    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    return monthOrder
+        .filter(month => attendanceByMonth[month])
+        .map(month => {
+            const { present, total } = attendanceByMonth[month];
+            return {
+                date: month,
+                attendance: parseFloat(((present / total) * 100).toFixed(1)),
+            };
+        });
+
+  }, [attendanceRecords]);
+
+
+  if (isLoading) {
+    return (
+        <div className="space-y-4">
+            <h1 className="text-2xl font-bold tracking-tight font-headline">My Attendance</h1>
+             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {Array.from({length: 3}).map((_, i) => (
+                    <Card key={i}><CardHeader className="pb-2"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-10 w-1/4 mt-1" /></CardHeader><CardContent><Skeleton className="h-3 w-3/4" /></CardContent></Card>
+                ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                    <CardHeader><CardTitle>Subject-wise Attendance</CardTitle><CardDescription>Detailed attendance record for each subject.</CardDescription></CardHeader>
+                    <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><CardTitle>Attendance Progress</CardTitle><CardDescription>Your attendance trend over the last few months.</CardDescription></CardHeader>
+                    <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+                </Card>
+            </div>
+        </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -36,33 +195,33 @@ export default function MyAttendancePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Overall Attendance</CardDescription>
-            <CardTitle className="text-4xl">{overallPercentage}%</CardTitle>
+            <CardTitle className="text-4xl">{overallStats.overallPercentage}%</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-xs text-muted-foreground">
-              You are on track. Keep it up!
+              {overallStats.overallPercentage >= 75 ? "You are on track. Keep it up!" : "Your attendance is low. Try to attend more classes."}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Classes Attended</CardDescription>
-            <CardTitle className="text-4xl">{mockStudentAttendance.reduce((acc, curr) => acc + curr.attendedClasses, 0)}</CardTitle>
+            <CardTitle className="text-4xl">{overallStats.totalAttended}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-xs text-muted-foreground">
-                Out of {mockStudentAttendance.reduce((acc, curr) => acc + curr.totalClasses, 0)} total classes.
+                Out of {overallStats.totalClasses} total classes held.
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Lowest Attendance</CardDescription>
-            <CardTitle className="text-4xl">{Math.min(...mockStudentAttendance.map(s => s.percentage))}%</CardTitle>
+            <CardTitle className="text-4xl">{overallStats.lowestAttendanceSubject.percentage}%</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-xs text-muted-foreground">
-                in {mockStudentAttendance.find(s => s.percentage === Math.min(...mockStudentAttendance.map(s => s.percentage)))?.subject}
+                in {overallStats.lowestAttendanceSubject.subject}
             </div>
           </CardContent>
         </Card>
@@ -75,26 +234,32 @@ export default function MyAttendancePage() {
             <CardDescription>Detailed attendance record for each subject.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[120px] sm:w-[180px]">Subject</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead className="text-right">Percentage</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockStudentAttendance.map((subject) => (
-                  <TableRow key={subject.subject}>
-                    <TableCell className="font-medium truncate">{subject.subject}</TableCell>
-                    <TableCell>
-                      <Progress value={subject.percentage} className="h-2" />
-                    </TableCell>
-                    <TableCell className="text-right">{subject.percentage.toFixed(1)}%</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+             {subjectWiseAttendance.length > 0 ? (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead className="w-[120px] sm:w-[180px]">Subject</TableHead>
+                        <TableHead>Progress</TableHead>
+                        <TableHead className="text-right">Percentage</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {subjectWiseAttendance.map((subject) => (
+                        <TableRow key={subject.subject}>
+                            <TableCell className="font-medium truncate">{subject.subject}</TableCell>
+                            <TableCell>
+                            <Progress value={subject.percentage} className="h-2" />
+                            </TableCell>
+                            <TableCell className="text-right">{subject.percentage}%</TableCell>
+                        </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+             ) : (
+                <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md">
+                    <p>No attendance records found yet.</p>
+                </div>
+             )}
           </CardContent>
         </Card>
         <Card>
@@ -103,15 +268,21 @@ export default function MyAttendancePage() {
             <CardDescription>Your attendance trend over the last few months.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                  <YAxis domain={[70, 100]} />
-                  <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} activeDot={{ r: 6 }} />
-                </LineChart>
-            </ChartContainer>
+            {monthlyTrendData.length > 0 ? (
+              <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+                  <LineChart data={monthlyTrendData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis domain={[0, 100]} />
+                    <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                    <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} activeDot={{ r: 6 }} />
+                  </LineChart>
+              </ChartContainer>
+            ) : (
+                 <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md">
+                    <p>Not enough data for a trend graph.</p>
+                </div>
+            )}
           </CardContent>
         </Card>
       </div>
