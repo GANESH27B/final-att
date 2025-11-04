@@ -86,9 +86,8 @@ service cloud.firestore {
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
 
-      // A user can always read their own attendance records.
-      // A faculty member can write attendance records if they own the class. This is broad to allow for batch writes
-      // but the application logic should be the primary driver of correctness.
+      // A user can always read and write their own attendance records.
+      // A faculty member can write attendance records if they own the class.
       match /attendance/{attendanceId} {
         allow read, list: if isOwner(userId);
         allow write: if isOwner(userId) || isClassOwner(request.resource.data.classId);
