@@ -36,10 +36,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EditStudentDialog } from './components/edit-student-dialog';
 import { RemoveStudentDialog } from './components/remove-student-dialog';
-import { useParams } from 'next/navigation';
 
-export default function ManageClassPage() {
-  const params = useParams();
+export default function ManageClassPage({ params }: { params: { classId: string } }) {
   const firestore = useFirestore();
   const classId = params.classId as string;
 
