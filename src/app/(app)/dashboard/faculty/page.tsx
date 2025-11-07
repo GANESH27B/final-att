@@ -52,7 +52,9 @@ export default function FacultyDashboardPage() {
             };
         }
         const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
+        const totalSessions = new Set(attendanceRecords.map(a => `${a.classId}-${a.date}`)).size;
         const avgAttendance = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
+        
         return {
             totalClasses: myClasses.length,
             avgAttendance,
@@ -70,6 +72,14 @@ export default function FacultyDashboardPage() {
             const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
             const avg = (presentCount / relevantAttendance.length) * 100;
             return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(index % 5) + 1}))` };
+        });
+        
+        // Update chartConfig dynamically
+        myClasses.forEach((cls, index) => {
+            const key = cls.name.replace(/\s+/g, '').toLowerCase();
+            if (!chartConfig[key as keyof typeof chartConfig]) {
+                (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
+            }
         });
         
         return classAttendance;
@@ -210,5 +220,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
