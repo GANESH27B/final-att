@@ -167,8 +167,8 @@ export default function FacultyDashboardPage() {
                        <YAxis domain={[0, 100]} unit="%" />
                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
                        <Bar dataKey="attendance" radius={8}>
-                         {myClassAttendanceData.map((entry) => (
-                            <Bar key={entry.name} dataKey="attendance" fill={entry.fill} />
+                         {myClassAttendanceData.map((entry, index) => (
+                           <Bar key={`bar-${index}`} dataKey="attendance" fill={entry.fill} />
                          ))}
                        </Bar>
                     </BarChart>
@@ -210,3 +210,5 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
+
+    

@@ -90,7 +90,7 @@ service cloud.firestore {
       // A faculty member can write attendance records if they own the class.
       match /attendance/{attendanceId} {
         allow read, list: if isOwner(userId);
-        allow write: if isOwner(userId) || isClassOwner(request.resource.data.classId);
+        allow write: if isOwner(userId); // Simplified from previous rule
       }
     }
     
@@ -124,7 +124,7 @@ service cloud.firestore {
     // Rules for attendance records within a class
     match /classes/{classId}/attendance/{attendanceId} {
       // Read/List: Admin or the class owner can see attendance. Students can read their own.
-      allow read, list: if isAdmin() || isClassOwner(classId) || isStudent();
+      allow read, list: if isAdmin() || isClassOwner(classId) || (isStudent() && get(/databases/$(database)/documents/classes/$(classId)/attendance/$(attendanceId)).data.studentId == request.auth.uid);
 
       // Write: Only the class owner (faculty) or an admin can create/modify attendance.
       // We also check for data consistency.
@@ -147,3 +147,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
