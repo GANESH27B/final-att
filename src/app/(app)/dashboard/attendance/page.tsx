@@ -107,30 +107,38 @@ export default function AttendancePage() {
     if (!firestore || !selectedClassId || !sessionDate || !currentUser) return;
 
     const studentId = student.id;
-    const attendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
+    const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${sessionDate}_${selectedClassId}`);
+    const classAttendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
     
+    const selectedClass = facultyClasses?.find(c => c.id === selectedClassId);
+    const attendanceData = {
+        studentId,
+        studentName: student.name,
+        classId: selectedClassId,
+        className: selectedClass?.name || "Unknown Class",
+        facultyId: currentUser.uid,
+        date: sessionDate,
+        status: "Present",
+        timestamp: serverTimestamp(),
+    };
+
     try {
         if (status === 'Absent') {
-            await deleteDoc(attendanceDocRef);
+            const batch = writeBatch(firestore);
+            batch.delete(classAttendanceDocRef);
+            batch.delete(studentAttendanceDocRef);
+            await batch.commit();
             toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
         } else {
-            const selectedClass = facultyClasses?.find(c => c.id === selectedClassId);
-            const attendanceData = {
-              studentId,
-              studentName: student.name,
-              classId: selectedClassId,
-              className: selectedClass?.name || "Unknown Class",
-              facultyId: currentUser.uid,
-              date: sessionDate,
-              status: "Present",
-              timestamp: serverTimestamp(),
-            };
-            await setDoc(attendanceDocRef, attendanceData);
+            const batch = writeBatch(firestore);
+            batch.set(classAttendanceDocRef, attendanceData);
+            batch.set(studentAttendanceDocRef, attendanceData);
+            await batch.commit();
             toast({ title: "Marked Present", description: `${student.name} marked as present.`, className: "bg-green-100 dark:bg-green-900 border-green-500"});
         }
     } catch (error: any) {
         if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: attendanceDocRef.path, operation: status === 'Present' ? 'create' : 'delete', requestResourceData: status === 'Present' ? { classId: selectedClassId } : undefined });
+          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write', requestResourceData: { classId: selectedClassId } });
           errorEmitter.emit('permission-error', permissionError);
         } else {
             toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
