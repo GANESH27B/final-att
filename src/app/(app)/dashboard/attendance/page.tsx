@@ -123,14 +123,13 @@ export default function AttendancePage() {
     };
 
     try {
+        const batch = writeBatch(firestore);
         if (status === 'Absent') {
-            const batch = writeBatch(firestore);
             batch.delete(classAttendanceDocRef);
             batch.delete(studentAttendanceDocRef);
             await batch.commit();
             toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
         } else {
-            const batch = writeBatch(firestore);
             batch.set(classAttendanceDocRef, attendanceData);
             batch.set(studentAttendanceDocRef, attendanceData);
             await batch.commit();
@@ -181,87 +180,89 @@ export default function AttendancePage() {
     setSelectedClassId(null);
     setSessionDate("");
     setLastScanResult(null);
-    if (scannerRef.current?.isScanning) {
-        scannerRef.current.stop().finally(() => {
-          scannerRef.current = null;
-          setHasCameraPermission(null);
-        });
-    } else {
-      setHasCameraPermission(null);
-    }
+    setHasCameraPermission(null); // Reset camera permission state
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
     })
   };
-
-  useEffect(() => {
-    const requestCamera = async () => {
-      if (sessionActive && hasCameraPermission === null) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setHasCameraPermission(true);
-          // We don't need to do anything with the stream directly, just requesting it checks for permission.
-          // The stream should be stopped to free up the camera.
-          stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-          console.error('Camera permission error:', err);
-          setHasCameraPermission(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please allow camera access in your browser settings to use this feature.',
-          });
-        }
-      }
-    };
-    requestCamera();
-  }, [sessionActive, hasCameraPermission, toast]);
   
   useEffect(() => {
-    if (sessionActive && hasCameraPermission && !scannerRef.current) {
-      const scanner = new Html5Qrcode('reader', {
-        verbose: false,
-        formatsToSupport: scannerConfig.supportedScanTypes,
-      });
-      scannerRef.current = scanner;
-
-      scanner.start(
-        { facingMode: 'environment' },
-        scannerConfig,
-        (decodedText) => {
-          markAttendance(decodedText);
-          if (scannerRef.current?.isScanning) {
-            try {
-              scannerRef.current.pause(true);
-              setTimeout(() => scannerRef.current?.resume(), 1500); // Increased pause
-            } catch (e) {
-              console.warn("Could not pause/resume scanner", e);
-            }
-          }
-        },
-        () => { /* ignore errors */ }
-      ).catch((err) => {
-        console.error('Scanner start error:', err);
-        if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
-          setHasCameraPermission(false);
-        }
-      });
+    if (!sessionActive) {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current = null;
+        }).catch(err => {
+          console.error("Failed to stop the scanner on session end:", err);
+        });
+      }
+      return;
     }
 
-    // Cleanup function to stop scanner on session end or component unmount
-    return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop()
-          .then(() => {
-            scannerRef.current = null;
-          })
-          .catch((err) => {
-            console.error('Failed to stop scanner cleanly:', err);
-          });
-      }
+    let isComponentMounted = true;
+    
+    const initializeScanner = async () => {
+        try {
+            await navigator.mediaDevices.getUserMedia({ video: true });
+            if (isComponentMounted) setHasCameraPermission(true);
+        } catch (err) {
+            console.error('Camera permission error:', err);
+            if (isComponentMounted) setHasCameraPermission(false);
+            toast({
+                variant: 'destructive',
+                title: 'Camera Access Denied',
+                description: 'Please allow camera access in your browser settings to use this feature.',
+            });
+            return; // Stop if no permission
+        }
+      
+        if (!isComponentMounted || scannerRef.current) return;
+      
+        const scanner = new Html5Qrcode('reader', {
+            verbose: false,
+            formatsToSupport: scannerConfig.supportedScanTypes,
+        });
+        scannerRef.current = scanner;
+
+        scanner.start(
+            { facingMode: 'environment' },
+            scannerConfig,
+            (decodedText) => {
+                markAttendance(decodedText);
+                if (scannerRef.current?.isScanning) {
+                    try {
+                        scannerRef.current.pause(true);
+                        setTimeout(() => scannerRef.current?.resume(), 1500);
+                    } catch (e) {
+                        console.warn("Could not pause/resume scanner", e);
+                    }
+                }
+            },
+            () => { /* ignore errors */ }
+        ).catch((err) => {
+            console.error('Scanner start error:', err);
+            if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
+                if (isComponentMounted) setHasCameraPermission(false);
+            }
+        });
     };
-  }, [sessionActive, hasCameraPermission, markAttendance]);
+
+    initializeScanner();
+
+    // Cleanup function
+    return () => {
+        isComponentMounted = false;
+        if (scannerRef.current && scannerRef.current.isScanning) {
+            scannerRef.current.stop()
+                .then(() => {
+                    scannerRef.current = null;
+                })
+                .catch((err) => {
+                    console.error('Failed to stop scanner cleanly on unmount:', err);
+                });
+        }
+    };
+}, [sessionActive, markAttendance, toast]);
   
   const handleSubmitManual = () => {
     if (manualRegNumber) {
