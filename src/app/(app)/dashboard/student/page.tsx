@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/card";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
-import { AttendanceRecord } from "@/lib/types";
+import { collection, collectionGroup, query, where } from "firebase/firestore";
+import { AttendanceRecord, Class } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -21,19 +21,25 @@ export default function StudentDashboardPage() {
     firestore && user ? collection(firestore, `users/${user.uid}/attendance`) : null,
     [firestore, user]
   );
+
+  const studentEnrollmentsQuery = useMemoFirebase(() => 
+    firestore && user ? query(collectionGroup(firestore, 'students'), where('id', '==', user.uid)) : null,
+    [firestore, user]
+  );
+
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
+  const { data: enrolledClasses, isLoading: isLoadingEnrollments } = useCollection<Class>(studentEnrollmentsQuery);
   
   const { totalClasses, avgAttendance } = useMemo(() => {
-    if (!attendanceRecords) return { totalClasses: 0, avgAttendance: 0 };
-    const uniqueClassIds = new Set(attendanceRecords.map(r => r.classId));
+    if (!attendanceRecords) return { totalClasses: enrolledClasses?.length || 0, avgAttendance: 0 };
     
     const presentCount = attendanceRecords.filter(r => r.status === 'Present').length;
     const average = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
 
-    return { totalClasses: uniqueClassIds.size, avgAttendance: average };
-  }, [attendanceRecords]);
+    return { totalClasses: enrolledClasses?.length || 0, avgAttendance: average };
+  }, [attendanceRecords, enrolledClasses]);
 
-  const isLoading = isLoadingAttendance;
+  const isLoading = isLoadingAttendance || isLoadingEnrollments;
 
   return (
     <div className="space-y-4">
