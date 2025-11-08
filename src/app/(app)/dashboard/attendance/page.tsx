@@ -10,14 +10,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { QrCode, ScanLine, ListChecks, StopCircle, AlertTriangle, UserX, UserCheck } from "lucide-react";
+import { QrCode, ScanLine, ListChecks, StopCircle, AlertTriangle, UserX, UserCheck, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { useCollection, useFirestore, useUser, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, query, setDoc, where, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, query, setDoc, where, serverTimestamp, writeBatch } from "firebase/firestore";
 import { Class, User } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -48,6 +48,9 @@ type ScanResult = {
     message: string;
 }
 
+type ScannerState = 'IDLE' | 'INITIALIZING' | 'SCANNING' | 'ERROR';
+
+
 export default function AttendancePage() {
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -58,10 +61,10 @@ export default function AttendancePage() {
   const [sessionDate, setSessionDate] = useState<string>("");
   const [manualRegNumber, setManualRegNumber] = useState("");
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
-
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [scannerState, setScannerState] = useState<ScannerState>('IDLE');
+
   
   const facultyClassesQuery = useMemoFirebase(() =>
     firestore && currentUser ? query(collection(firestore, 'classes'), where('facultyId', '==', currentUser.uid)) : null,
@@ -181,103 +184,80 @@ export default function AttendancePage() {
   
   const handleEndSession = () => {
     setSessionActive(false);
+    setSelectedClassId(null);
+    setSessionDate("");
+    setLastScanResult(null);
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
     })
   };
   
-  useEffect(() => {
+ useEffect(() => {
     const readerElementId = 'reader';
 
     if (sessionActive) {
-      let isComponentMounted = true;
+      if (scannerState !== 'IDLE') return;
 
-      const setupScanner = async () => {
-        if (!document.getElementById(readerElementId)) return;
+      setScannerState('INITIALIZING');
+      const scanner = new Html5Qrcode(readerElementId, {
+        verbose: false,
+        formatsToSupport: scannerConfig.supportedScanTypes,
+      });
+      scannerRef.current = scanner;
 
-        // Check for camera permission
-        try {
-            await navigator.mediaDevices.getUserMedia({ video: true });
-            if (isComponentMounted) setHasCameraPermission(true);
-        } catch (err) {
-            if (isComponentMounted) {
-                setHasCameraPermission(false);
-                toast({
-                    variant: 'destructive',
-                    title: 'Camera Access Denied',
-                    description: 'Please enable camera access in your browser settings.',
-                });
-            }
-            return;
-        }
-
-        // Initialize and start the scanner
-        if (isComponentMounted && !scannerRef.current) {
-            const scanner = new Html5Qrcode(readerElementId, {
-                verbose: false,
-                formatsToSupport: scannerConfig.supportedScanTypes,
-            });
-            scannerRef.current = scanner;
-
-            scanner.start(
-                { facingMode: 'environment' },
-                scannerConfig,
-                (decodedText) => {
-                    markAttendance(decodedText);
-                    if (scannerRef.current?.isScanning) {
-                        try {
-                            scannerRef.current.pause(true);
-                            setTimeout(() => scannerRef.current?.resume(), 1500);
-                        } catch (e) { /* Ignore pause/resume errors */ }
-                    }
-                },
-                (errorMessage) => { /* ignore scan errors */ }
-            ).catch(() => {
-                if (isComponentMounted) setHasCameraPermission(false);
-            });
-        }
-      };
-
-      setupScanner();
-
-      return () => {
-        isComponentMounted = false;
-        if (scannerRef.current) {
-          if (scannerRef.current.isScanning) {
-            scannerRef.current.stop().catch(() => {
-                // Ignore errors on stop, it might already be stopping.
-            });
+      scanner.start(
+        { facingMode: 'environment' },
+        scannerConfig,
+        (decodedText) => {
+          markAttendance(decodedText);
+          if (scannerRef.current?.isScanning) {
+            try {
+              scannerRef.current.pause(true);
+              setTimeout(() => scannerRef.current?.resume(), 1500);
+            } catch (e) { /* Ignore */ }
           }
-          scannerRef.current.clear();
-          scannerRef.current = null;
-        }
-      };
+        },
+        (errorMessage) => { /* ignore scan errors */ }
+      ).then(() => {
+        setScannerState('SCANNING');
+      }).catch((err) => {
+        setScannerState('ERROR');
+        toast({
+          variant: 'destructive',
+          title: 'Camera Error',
+          description: err.message || 'Could not start the camera.',
+        });
+      });
     } else {
-        // Cleanup when session becomes inactive
-        if (scannerRef.current) {
-             if (scannerRef.current.isScanning) {
-                scannerRef.current.stop().catch(() => {});
-             }
-             scannerRef.current.clear();
-             scannerRef.current = null;
-        }
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().then(() => {
+            scannerRef.current?.clear();
+            scannerRef.current = null;
+            setScannerState('IDLE');
+        }).catch(() => {
+            // Ignore errors if it fails to stop.
+            scannerRef.current?.clear();
+            scannerRef.current = null;
+            setScannerState('IDLE');
+        });
+      } else {
+        setScannerState('IDLE');
+      }
     }
+
+    // This is a critical cleanup function.
+    return () => {
+      if (scannerRef.current) {
+        if (scannerRef.current.isScanning) {
+          scannerRef.current.stop().catch(() => {});
+        }
+        scannerRef.current.clear();
+        scannerRef.current = null;
+      }
+    };
   }, [sessionActive, markAttendance, toast]);
 
-
-  const resetSession = () => {
-    setSelectedClassId(null);
-    setSessionDate("");
-    setLastScanResult(null);
-    setHasCameraPermission(null);
-  };
-
-  useEffect(() => {
-    if (!sessionActive) {
-      resetSession();
-    }
-  }, [sessionActive]);
 
   const handleSubmitManual = () => {
     if (manualRegNumber) {
@@ -288,6 +268,39 @@ export default function AttendancePage() {
   
   const isLoading = isLoadingClasses || isLoadingEnrolled || isLoadingAttendance;
   const selectedClassName = facultyClasses?.find(c => c.id === selectedClassId)?.name || "";
+
+  const renderScannerOverlay = () => {
+    switch(scannerState) {
+        case 'IDLE':
+            if (!sessionActive) {
+                return (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
+                        <QrCode className="h-16 w-16 text-muted-foreground" />
+                        <p className="mt-4 text-muted-foreground">Select a class to start</p>
+                    </div>
+                );
+            }
+            return null;
+        case 'INITIALIZING':
+            return (
+                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
+                    <Loader2 className="h-16 w-16 text-primary animate-spin" />
+                    <p className="mt-4 text-muted-foreground">Starting camera...</p>
+                </div>
+            );
+        case 'ERROR':
+            return (
+                <Alert variant="destructive" className="absolute m-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
+                </Alert>
+            );
+        case 'SCANNING':
+            return null; // No overlay when scanning
+    }
+  }
+
 
   return (
     <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
@@ -322,26 +335,7 @@ export default function AttendancePage() {
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
                 <div id="reader" className="w-full h-full" />
-                {!sessionActive && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
-                        <QrCode className="h-16 w-16 text-muted-foreground" />
-                        <p className="mt-4 text-muted-foreground">Select a class to start</p>
-                    </div>
-                )}
-                 {sessionActive && hasCameraPermission === false && (
-                    <Alert variant="destructive" className="absolute m-4">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Camera Access Denied</AlertTitle>
-                        <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
-                    </Alert>
-                )}
-                 {sessionActive && hasCameraPermission === null && (
-                    <Alert className="absolute m-4">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Requesting Camera</AlertTitle>
-                        <AlertDescription>Please wait while we request camera access.</AlertDescription>
-                    </Alert>
-                )}
+                {renderScannerOverlay()}
             </div>
              {sessionActive && lastScanResult && (
                 <Alert className="mt-4" variant={lastScanResult.status === "success" ? "default" : "destructive"}>
