@@ -28,7 +28,7 @@ function ClassCard({ cls }: { cls: Class; }) {
 
     return (
         <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
-            <Link href={`/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
+            <Link href={`/dashboard/classes/${cls.id}`} passHref className="flex flex-col flex-grow">
             <CardHeader>
                 <CardTitle>Section {cls.section}</CardTitle>
                 <CardDescription>{cls.name}</CardDescription>
