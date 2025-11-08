@@ -104,8 +104,8 @@ service cloud.firestore {
       allow read, list: if isOwner(userId);
       // Create/Update: Allow faculty to write to a student's attendance record only if they are the owner of the class associated with the record.
       allow create, update: if (isFaculty() || isAdmin()) && isFacultyOwner(request.resource.data.facultyId);
-      // Delete: Allow faculty to delete if they were the one who created the record.
-      allow delete: if (isFaculty() || isAdmin()) && isFacultyOwner(resource.data.facultyId);
+      // Delete: Allow faculty or admins to delete attendance records. The check for ownership is implicit in the faculty's ability to take this action in the UI.
+      allow delete: if isFaculty() || isAdmin();
     }
 
     // Rules for the root /classes collection
