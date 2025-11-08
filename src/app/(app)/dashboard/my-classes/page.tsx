@@ -10,7 +10,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collectionGroup, query, where } from "firebase/firestore";
+import { collection, collectionGroup, documentId, query, where } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
 import { useMemo } from "react";
@@ -20,16 +20,16 @@ import { Users } from "lucide-react";
 function ClassCard({ cls }: { cls: Class & { id: string } }) {
     const firestore = useFirestore();
     const enrolledStudentsCollectionRef = useMemoFirebase(() => 
-        (firestore ? collectionGroup(firestore, 'students') : null), 
-        [firestore]
+        (firestore ? collection(firestore, `classes/${cls.id}/students`) : null), 
+        [firestore, cls.id]
     );
 
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<UserType>(enrolledStudentsCollectionRef);
 
     const classStudentCount = useMemo(() => {
         if (!enrolledStudents) return 0;
-        return enrolledStudents.filter(student => student.classId === cls.id).length;
-    }, [enrolledStudents, cls.id]);
+        return enrolledStudents.length;
+    }, [enrolledStudents]);
 
     return (
         <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
@@ -79,7 +79,7 @@ export default function MyClassesPage() {
   // Query the 'students' collection group to find all student documents matching the current user's ID.
   const studentEnrollmentsQuery = useMemoFirebase(() => {
     if (!firestore || !currentUser) return null;
-    return query(collectionGroup(firestore, 'students'), where('id', '==', currentUser.uid));
+    return query(collectionGroup(firestore, 'students'), where(documentId(), '==', currentUser.uid));
   }, [firestore, currentUser]);
 
   // This hook now returns documents from the 'students' subcollections where the student is enrolled.
@@ -95,7 +95,8 @@ export default function MyClassesPage() {
   // Now, fetch the actual class documents using the extracted class IDs.
   const classesQuery = useMemoFirebase(() => {
     if (!firestore || enrolledClassIds.length === 0) return null;
-    return query(collection(firestore, 'classes'), where('__name__', 'in', enrolledClassIds));
+    // Use a 'in' query to fetch all class documents that the student is enrolled in.
+    return query(collection(firestore, 'classes'), where(documentId(), 'in', enrolledClassIds));
   }, [firestore, enrolledClassIds]);
 
   const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
