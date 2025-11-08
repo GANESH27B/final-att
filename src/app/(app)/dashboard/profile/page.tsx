@@ -115,7 +115,11 @@ export default function ProfilePage() {
       // We always update the avatar to a new random one on profile save.
       profileUpdates.photoURL = newAvatarUrl;
       firestoreUpdates.avatarUrl = newAvatarUrl;
-      profileUpdated = true;
+      
+      // Check if there are any actual changes before marking profile as updated.
+      if (profileUpdates.displayName || profileUpdates.photoURL) {
+        profileUpdated = true;
+      }
 
       if (profileUpdated) {
         await updateProfile(user, profileUpdates);
@@ -170,6 +174,7 @@ export default function ProfilePage() {
       setIsPending(false);
       form.reset({
         ...form.getValues(),
+        name: data.name, // Keep the new name in the form
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
