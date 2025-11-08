@@ -13,6 +13,17 @@ import { collection, collectionGroup, query, where, getDocs } from "firebase/fir
 import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
 import { useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
+import { format, parseISO } from 'date-fns';
+
+
+const chartConfig = {
+  attendance: {
+    label: "Attendance",
+    color: "hsl(var(--primary))",
+  },
+};
 
 export default function FacultyDashboardPage() {
   const firestore = useFirestore();
@@ -41,6 +52,12 @@ export default function FacultyDashboardPage() {
       setIsLoadingStudents(true);
       let totalStudents = new Set<string>();
 
+      if (facultyClasses.length === 0) {
+        setStudentCount(0);
+        setIsLoadingStudents(false);
+        return;
+      }
+
       const fetchStudentsPromises = facultyClasses.map(cls => {
         const studentsCollectionRef = collection(firestore, 'classes', cls.id, 'students');
         return getDocs(studentsCollectionRef);
@@ -57,6 +74,7 @@ export default function FacultyDashboardPage() {
     } else if (!isLoadingClasses) {
       // If there are no classes, we are done loading.
       setIsLoadingStudents(false);
+      setStudentCount(0);
     }
   }, [facultyClasses, firestore, isLoadingClasses]);
 
@@ -77,6 +95,55 @@ export default function FacultyDashboardPage() {
     };
   }, [facultyClasses, attendanceRecords]);
 
+  // 5. Calculate data for charts
+   const myClassAttendanceData = useMemo(() => {
+    if (!facultyClasses || !attendanceRecords || facultyClasses.length === 0) return [];
+
+    const classAttendance = facultyClasses.map(cls => {
+        const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
+        if (relevantAttendance.length === 0) {
+            return { name: cls.name, attendance: 0 };
+        }
+        const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+        const avg = (presentCount / relevantAttendance.length) * 100;
+        return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
+    });
+    
+    return classAttendance;
+
+  }, [facultyClasses, attendanceRecords]);
+
+  const overallAttendanceData = useMemo(() => {
+    if (!attendanceRecords || attendanceRecords.length === 0) return [];
+
+    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
+
+    attendanceRecords.forEach(record => {
+        const month = format(parseISO(record.date), 'MMM');
+        if (!attendanceByMonth[month]) {
+            attendanceByMonth[month] = { present: 0, total: 0 };
+        }
+        attendanceByMonth[month].total++;
+        if (record.status === 'Present') {
+            attendanceByMonth[month].present++;
+        }
+    });
+
+    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    return monthOrder
+        .filter(month => attendanceByMonth[month])
+        .map(month => {
+            const { present, total } = attendanceByMonth[month];
+            return {
+                date: month,
+                attendance: parseFloat(((present / total) * 100).toFixed(1)),
+            };
+        });
+
+  }, [attendanceRecords]);
+
+
   const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudents;
 
   return (
@@ -89,7 +156,7 @@ export default function FacultyDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingClasses ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{facultyClasses?.length || 0}</div>}
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{facultyClasses?.length || 0}</div>}
             <p className="text-xs text-muted-foreground">This semester</p>
           </CardContent>
         </Card>
@@ -99,7 +166,7 @@ export default function FacultyDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingStudents ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{studentCount}</div>}
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{studentCount}</div>}
             <p className="text-xs text-muted-foreground">Across all your classes</p>
           </CardContent>
         </Card>
@@ -109,9 +176,61 @@ export default function FacultyDashboardPage() {
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingAttendance ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.avgAttendance.toFixed(1)}%</div>}
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.avgAttendance.toFixed(1)}%</div>}
             <p className="text-xs text-muted-foreground">Across all your classes</p>
           </CardContent>
+        </Card>
+      </div>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <Card>
+            <CardHeader>
+                <CardTitle>My Class Attendance</CardTitle>
+                <CardDescription>Average attendance percentage for your classes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+                    myClassAttendanceData.length > 0 ? (
+                        <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                            <BarChart data={myClassAttendanceData} accessibilityLayer>
+                               <CartesianGrid vertical={false} />
+                               <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
+                               <YAxis domain={[0, 100]} />
+                               <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                               <Bar dataKey="attendance" fill="var(--color-attendance)" radius={8} />
+                            </BarChart>
+                        </ChartContainer>
+                    ) : (
+                        <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                            No attendance data to display.
+                        </div>
+                    )
+                )}
+            </CardContent>
+        </Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>Overall Attendance Trend</CardTitle>
+                <CardDescription>Your students' monthly attendance trend.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+                    overallAttendanceData.length > 0 ? (
+                        <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                            <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid vertical={false} />
+                                <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                                <YAxis domain={[0, 100]} />
+                                <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                                <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                            </LineChart>
+                        </ChartContainer>
+                    ) : (
+                         <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                            No trend data available.
+                        </div>
+                    )
+                )}
+            </CardContent>
         </Card>
       </div>
     </div>
