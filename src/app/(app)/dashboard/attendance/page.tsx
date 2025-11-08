@@ -319,12 +319,6 @@ export default function AttendancePage() {
                         {facultyClasses?.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.section}</SelectItem>)}
                     </SelectContent>
                 </Select>
-                {sessionActive && (
-                    <Button onClick={handleEndSession} variant="destructive" className="flex items-center gap-2">
-                        <StopCircle />
-                        End Session
-                    </Button>
-                )}
             </CardContent>
         </Card>
         <Card>
@@ -337,6 +331,14 @@ export default function AttendancePage() {
                 <div id="reader" className="w-full h-full" />
                 {renderScannerOverlay()}
             </div>
+
+            {sessionActive && (
+                <Button onClick={handleEndSession} variant="destructive" className="w-full mt-4 flex items-center gap-2">
+                    <StopCircle />
+                    Stop Camera & End Session
+                </Button>
+            )}
+
              {sessionActive && lastScanResult && (
                 <Alert className="mt-4" variant={lastScanResult.status === "success" ? "default" : "destructive"}>
                     <AlertTitle className="flex items-center gap-2">
