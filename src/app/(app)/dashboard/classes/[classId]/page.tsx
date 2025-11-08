@@ -25,7 +25,7 @@ import { ArrowLeft, MoreHorizontal, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { AddStudentDialog } from './components/add-student-dialog';
-import { useState } from 'react';
+import { useState, use } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +39,7 @@ import { RemoveStudentDialog } from './components/remove-student-dialog';
 
 export default function ManageClassPage({ params }: { params: { classId: string } }) {
   const firestore = useFirestore();
-  const classId = params.classId as string;
+  const classId = use(params).classId as string;
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
