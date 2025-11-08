@@ -34,24 +34,24 @@ interface SidebarNavProps {
 }
 
 const adminNav = [
-  { href: "/admin", icon: Home, label: "Dashboard" },
-  { href: "/users", icon: Users, label: "User Management" },
-  { href: "/classes", icon: BookOpen, label: "Class Management" },
-  { href: "/analytics", icon: PieChart, label: "Analytics & Reports" },
+  { href: "/dashboard/admin", icon: Home, label: "Dashboard" },
+  { href: "/dashboard/users", icon: Users, label: "User Management" },
+  { href: "/dashboard/classes", icon: BookOpen, label: "Class Management" },
+  { href: "/dashboard/analytics", icon: PieChart, label: "Analytics & Reports" },
 ];
 
 const facultyNav = [
-  { href: "/faculty", icon: Home, label: "Dashboard" },
-  { href: "/attendance", icon: ScanLine, label: "Take Attendance" },
-  { href: "/classes", icon: BookOpen, label: "My Classes" },
+  { href: "/dashboard/faculty", icon: Home, label: "Dashboard" },
+  { href: "/dashboard/attendance", icon: ScanLine, label: "Take Attendance" },
+  { href: "/dashboard/classes", icon: BookOpen, label: "My Classes" },
 ];
 
 const studentNav = [
-    { href: "/student", icon: Home, label: "Dashboard" },
+    { href: "/dashboard/student", icon: Home, label: "Dashboard" },
 ];
 
 const commonNav = [
-    { href: "/profile", icon: User, label: "Profile" },
+    { href: "/dashboard/profile", icon: User, label: "Profile" },
 ];
 
 const navItems = {
@@ -87,7 +87,7 @@ export function SidebarNav({ role = "admin" }: SidebarNavProps) {
             <SidebarMenuItem key={item.label}>
               <Link href={item.href}>
                 <SidebarMenuButton
-                  isActive={pathname.startsWith(item.href)}
+                  isActive={pathname === item.href}
                   tooltip={item.label}
                 >
                   <item.icon />

@@ -29,17 +29,17 @@ export default function DashboardRedirectPage() {
                 const userData = docSnap.data() as User;
                 switch (userData.role) {
                     case 'admin':
-                        router.replace('/admin');
+                        router.replace('/dashboard/admin');
                         break;
                     case 'faculty':
-                        router.replace('/faculty');
+                        router.replace('/dashboard/faculty');
                         break;
                     case 'student':
-                        router.replace('/student');
+                        router.replace('/dashboard/student');
                         break;
                     default:
                         // Fallback to a generic profile page or login if role is unknown
-                        router.replace('/profile');
+                        router.replace('/dashboard/profile');
                         break;
                 }
             } else {
