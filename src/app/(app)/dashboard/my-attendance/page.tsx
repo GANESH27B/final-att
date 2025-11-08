@@ -44,40 +44,35 @@ export default function MyAttendancePage() {
   const isLoading = isLoadingAttendance;
 
   const subjectWiseAttendance = useMemo(() => {
-    if (!attendanceRecords) return [];
+    if (!attendanceRecords || attendanceRecords.length === 0) return [];
 
-    const statsByClass: { [classId: string]: { name: string; attended: number; total: number } } = {};
-    const uniqueDatesByClass: { [classId: string]: Set<string> } = {};
+    const statsByClass: { [classId: string]: { name: string; attended: number; sessions: Set<string> } } = {};
 
     attendanceRecords.forEach(record => {
       // Initialize if not present
-      if (!uniqueDatesByClass[record.classId]) uniqueDatesByClass[record.classId] = new Set();
       if (!statsByClass[record.classId]) {
         statsByClass[record.classId] = { 
             name: record.className || `Class ${record.classId.slice(0,4)}`,
             attended: 0, 
-            total: 0 
+            sessions: new Set<string>()
         };
       }
       
-      uniqueDatesByClass[record.classId].add(record.date);
+      // Add the date to the set of sessions for this class
+      statsByClass[record.classId].sessions.add(record.date);
+
+      // Increment attended count if present
       if (record.status === 'Present') {
         statsByClass[record.classId].attended++;
       }
     });
 
-    // Set total classes based on unique dates attended, not total records
-    for (const classId in uniqueDatesByClass) {
-        if(statsByClass[classId]) {
-            statsByClass[classId].total = uniqueDatesByClass[classId].size;
-        }
-    }
-
-    return Object.values(statsByClass).map(stats => {
-      const percentage = stats.total > 0 ? (stats.attended / stats.total) * 100 : 0;
+    return Object.entries(statsByClass).map(([classId, stats]) => {
+      const totalClasses = stats.sessions.size;
+      const percentage = totalClasses > 0 ? (stats.attended / totalClasses) * 100 : 0;
       return {
         subject: stats.name,
-        totalClasses: stats.total,
+        totalClasses: totalClasses,
         attendedClasses: stats.attended,
         percentage: parseFloat(percentage.toFixed(1)),
       };
@@ -109,40 +104,45 @@ export default function MyAttendancePage() {
   }, [subjectWiseAttendance]);
 
   const monthlyTrendData = useMemo(() => {
-    if (!attendanceRecords) return [];
-
-    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
-    const uniqueDaysByMonth: { [key: string]: Set<string> } = {};
-
+    if (!attendanceRecords || attendanceRecords.length === 0) return [];
+  
+    // Group records by month, also tracking unique sessions (date) per month
+    const attendanceByMonth: { [key: string]: { present: number; sessions: Set<string> } } = {};
+  
     attendanceRecords.forEach(record => {
-        try {
-          const month = format(parseISO(record.date), 'MMM');
-          if (!uniqueDaysByMonth[month]) uniqueDaysByMonth[month] = new Set();
-          uniqueDaysByMonth[month].add(record.date);
-
-          if (!attendanceByMonth[month]) attendanceByMonth[month] = { present: 0, total: 0 };
-          if (record.status === 'Present') {
-              attendanceByMonth[month].present++;
-          }
-        } catch(e) { /* ignore invalid dates */ }
-    });
-
-    for (const month in uniqueDaysByMonth) {
-        if(attendanceByMonth[month]) {
-            attendanceByMonth[month].total = uniqueDaysByMonth[month].size;
+      try {
+        const month = format(parseISO(record.date), 'MMM'); // 'Jan', 'Feb', etc.
+  
+        if (!attendanceByMonth[month]) {
+          attendanceByMonth[month] = { present: 0, sessions: new Set<string>() };
         }
-    }
-
+  
+        // Add the session date to the set for the month
+        attendanceByMonth[month].sessions.add(record.date);
+  
+        // If present, increment the count
+        if (record.status === 'Present') {
+          attendanceByMonth[month].present++;
+        }
+      } catch (e) {
+        // Ignore records with invalid date formats
+      }
+    });
+  
     const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
+  
     return monthOrder
-        .filter(month => attendanceByMonth[month])
-        .map(month => {
-            const { present, total } = attendanceByMonth[month];
-            const percentage = total > 0 ? (present / total) * 100 : 0;
-            return { date: month, attendance: parseFloat(percentage.toFixed(1)) };
-        });
-
+      .filter(month => attendanceByMonth[month]) // Only include months with data
+      .map(month => {
+        const { present, sessions } = attendanceByMonth[month];
+        const total = sessions.size; // Total classes are the number of unique sessions
+        const percentage = total > 0 ? (present / total) * 100 : 0;
+        return {
+          date: month,
+          attendance: parseFloat(percentage.toFixed(1))
+        };
+      });
+  
   }, [attendanceRecords]);
 
 
@@ -270,5 +270,3 @@ export default function MyAttendancePage() {
     </div>
   );
 }
-
-    
