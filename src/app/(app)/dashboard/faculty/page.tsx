@@ -1,4 +1,5 @@
 
+
 "use client"
 
 import {
@@ -87,20 +88,30 @@ export default function FacultyDashboardPage() {
     }
 
     const attendanceByDate: { [date: string]: { present: number, total: number } } = {};
+    const studentCountPerDate: { [date: string]: Set<string> } = {};
+
 
     attendanceRecords.forEach(record => {
-      if (!attendanceByDate[record.date]) {
-        attendanceByDate[record.date] = { present: 0, total: 0 };
+      const date = record.date;
+      if (!attendanceByDate[date]) {
+        attendanceByDate[date] = { present: 0, total: 0 };
+        studentCountPerDate[date] = new Set();
       }
-      attendanceByDate[record.date].total++;
+      
+      studentCountPerDate[date].add(record.studentId);
+
       if (record.status === 'Present') {
-        attendanceByDate[record.date].present++;
+        attendanceByDate[date].present++;
       }
     });
 
-    const dailyPercentages = Object.values(attendanceByDate).map(
-      daily => (daily.present / daily.total) * 100
-    );
+    Object.keys(attendanceByDate).forEach(date => {
+        attendanceByDate[date].total = studentCountPerDate[date].size;
+    });
+
+    const dailyPercentages = Object.values(attendanceByDate)
+        .filter(daily => daily.total > 0)
+        .map(daily => (daily.present / daily.total) * 100);
 
     const avgAttendance = dailyPercentages.length > 0 
       ? dailyPercentages.reduce((a, b) => a + b, 0) / dailyPercentages.length 
@@ -115,18 +126,26 @@ export default function FacultyDashboardPage() {
    const myClassAttendanceData = useMemo(() => {
     if (!facultyClasses || !attendanceRecords || facultyClasses.length === 0) return [];
 
-    const classAttendance = facultyClasses.map(cls => {
-        const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
-        if (relevantAttendance.length === 0) {
-            return { name: cls.name, attendance: 0 };
-        }
-        const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
-        const avg = (presentCount / relevantAttendance.length) * 100;
-        return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
-    });
-    
-    return classAttendance;
+    return facultyClasses.map(cls => {
+      const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
+      if (relevantAttendance.length === 0) {
+        return { name: cls.name, attendance: 0 };
+      }
+      
+      const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+      
+      // Get the number of unique dates (sessions) for this class
+      const totalSessions = new Set(relevantAttendance.map(a => a.date)).size;
 
+      if (totalSessions === 0) {
+        return { name: cls.name, attendance: 0 };
+      }
+
+      // Avg attendance per session for this class
+      const avg = (presentCount / totalSessions) * 100 / (relevantAttendance.length/totalSessions);
+
+      return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
+    });
   }, [facultyClasses, attendanceRecords]);
 
   const overallAttendanceData = useMemo(() => {
@@ -135,13 +154,17 @@ export default function FacultyDashboardPage() {
     const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
 
     attendanceRecords.forEach(record => {
-        const month = format(parseISO(record.date), 'MMM');
-        if (!attendanceByMonth[month]) {
-            attendanceByMonth[month] = { present: 0, total: 0 };
-        }
-        attendanceByMonth[month].total++;
-        if (record.status === 'Present') {
-            attendanceByMonth[month].present++;
+        try {
+            const month = format(parseISO(record.date), 'MMM');
+            if (!attendanceByMonth[month]) {
+                attendanceByMonth[month] = { present: 0, total: 0 };
+            }
+            attendanceByMonth[month].total++;
+            if (record.status === 'Present') {
+                attendanceByMonth[month].present++;
+            }
+        } catch (e) {
+            // Ignore invalid date formats
         }
     });
 
