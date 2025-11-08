@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -282,6 +283,12 @@ export default function AttendancePage() {
                         {facultyClasses?.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.section}</SelectItem>)}
                     </SelectContent>
                 </Select>
+                {sessionActive && (
+                    <Button onClick={handleEndSession} variant="destructive">
+                        <StopCircle />
+                        End Session
+                    </Button>
+                )}
             </CardContent>
         </Card>
         <Card>
@@ -392,3 +399,4 @@ export default function AttendancePage() {
     </div>
   );
 }
+
