@@ -106,36 +106,80 @@ export default function MyAttendancePage() {
   const monthlyTrendData = useMemo(() => {
     if (!attendanceRecords || attendanceRecords.length === 0) return [];
   
-    // Group records by month, also tracking unique sessions (date) per month
+    // Group records by month, also tracking unique sessions (class + date) per month
     const attendanceByMonth: { [key: string]: { present: number; sessions: Set<string> } } = {};
   
     attendanceRecords.forEach(record => {
       try {
         const month = format(parseISO(record.date), 'MMM'); // 'Jan', 'Feb', etc.
+        const sessionKey = `${record.classId}-${record.date}`;
   
         if (!attendanceByMonth[month]) {
           attendanceByMonth[month] = { present: 0, sessions: new Set<string>() };
         }
   
-        // Add the session date to the set for the month
-        attendanceByMonth[month].sessions.add(record.date);
+        // Add the session to the set for the month
+        attendanceByMonth[month].sessions.add(sessionKey);
   
-        // If present, increment the count
+        // If present, increment the count for that session
         if (record.status === 'Present') {
-          attendanceByMonth[month].present++;
+          // Here we can simply count present records, as we divide by unique sessions later.
+          // This part of logic seems more complex than it needs to be.
+          // Let's rethink how to calculate monthly percentage.
         }
       } catch (e) {
         // Ignore records with invalid date formats
       }
     });
+
+    const monthlyData: { [key: string]: { present: number; total: number } } = {};
+
+    attendanceRecords.forEach(record => {
+      try {
+        const month = format(parseISO(record.date), 'MMM');
+        if (!monthlyData[month]) {
+            monthlyData[month] = { present: 0, total: 0 };
+        }
+        // This logic is still not quite right. We need to group by session first.
+      } catch (e) {}
+    });
+
+    // Correct Logic: Group all records by session first, then group sessions by month
+    const sessionsByMonth: { [key: string]: { present: number; total: number } } = {};
+
+    // 1. Group records by session (classId + date)
+    const sessions: { [key: string]: { present: boolean } } = {};
+    attendanceRecords.forEach(rec => {
+        const sessionKey = `${rec.classId}-${rec.date}`;
+        if (!sessions[sessionKey]) {
+            sessions[sessionKey] = { present: false };
+        }
+        if (rec.status === 'Present') {
+            sessions[sessionKey].present = true;
+        }
+    });
+
+    // 2. Group sessions by month and calculate stats
+    Object.entries(sessions).forEach(([sessionKey, sessionData]) => {
+        const dateStr = sessionKey.split('-').slice(1).join('-');
+        try {
+            const month = format(parseISO(dateStr), 'MMM');
+            if (!sessionsByMonth[month]) {
+                sessionsByMonth[month] = { present: 0, total: 0 };
+            }
+            sessionsByMonth[month].total++;
+            if (sessionData.present) {
+                sessionsByMonth[month].present++;
+            }
+        } catch (e) {}
+    });
   
     const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   
     return monthOrder
-      .filter(month => attendanceByMonth[month]) // Only include months with data
+      .filter(month => sessionsByMonth[month]) // Only include months with data
       .map(month => {
-        const { present, sessions } = attendanceByMonth[month];
-        const total = sessions.size; // Total classes are the number of unique sessions
+        const { present, total } = sessionsByMonth[month];
         const percentage = total > 0 ? (present / total) * 100 : 0;
         return {
           date: month,
