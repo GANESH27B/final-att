@@ -18,133 +18,48 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where, getDocs, onSnapshot, Unsubscribe } from "firebase/firestore";
-import { Class, AttendanceRecord } from "@/lib/types";
-import { useMemo, useState, useEffect } from "react";
+import { collection, query } from "firebase/firestore";
+import { AttendanceRecord } from "@/lib/types";
+import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 
-type CombinedAttendanceRecord = {
-  id: string;
-  className: string;
-  date: string;
-  status: "Present" | "Absent";
-};
 
 export default function StudentDashboardPage() {
   const firestore = useFirestore();
   const { user } = useUser();
 
-  const [allSessions, setAllSessions] = useState<CombinedAttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // 1. Get all classes the student is enrolled in (real-time).
-  const enrolledClassesQuery = useMemoFirebase(
-    () => 
-      firestore && user 
-      ? query(collection(firestore, 'classes'), where('studentIds', 'array-contains', user.uid))
-      : null, 
-    [firestore, user]
-  );
-  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(enrolledClassesQuery);
-
-  // 2. Get all of the student's "Present" attendance records (real-time).
   const studentAttendanceQuery = useMemoFirebase(
     () =>
       firestore && user
-        ? query(collection(firestore, `users/${user.uid}/attendance`), where('status', '==', 'Present'))
+        ? query(collection(firestore, `users/${user.uid}/attendance`))
         : null,
     [firestore, user]
   );
-  const { data: presentRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
-
-
-  // 3. Set up real-time listeners for all class sessions.
-  useEffect(() => {
-    if (isLoadingClasses || isLoadingAttendance) {
-        setIsLoading(true);
-        return;
-    }
-    
-    if (!enrolledClasses || !firestore || !user) {
-        setIsLoading(false);
-        setAllSessions([]);
-        return;
-    }
-
-    setIsLoading(true);
-    const unsubscribes: Unsubscribe[] = [];
-    let allClassSessionsData: { [classId: string]: CombinedAttendanceRecord[] } = {};
-
-    const studentPresentRecordsMap = new Map(presentRecords?.map(r => `${r.classId}-${r.date}`));
-
-    const updateAllSessions = () => {
-        const combinedSessions = Object.values(allClassSessionsData).flat();
-        combinedSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setAllSessions(combinedSessions);
-    };
-
-    if (enrolledClasses.length === 0) {
-      setIsLoading(false);
-      setAllSessions([]);
-      return;
-    }
-
-    enrolledClasses.forEach((cls, index) => {
-        const classAttendanceQuery = query(collection(firestore, `classes/${cls.id}/attendance`));
-        
-        const unsubscribe = onSnapshot(classAttendanceQuery, (querySnapshot) => {
-            const sessionDates = new Set<string>();
-            querySnapshot.forEach(doc => {
-                sessionDates.add(doc.data().date);
-            });
-            
-            const classSessions: CombinedAttendanceRecord[] = [];
-            sessionDates.forEach(date => {
-                const sessionKey = `${cls.id}-${date}`;
-                const isPresent = studentPresentRecordsMap.has(sessionKey);
-                classSessions.push({
-                    id: sessionKey,
-                    className: cls.name,
-                    date: date,
-                    status: isPresent ? 'Present' : 'Absent',
-                });
-            });
-
-            allClassSessionsData[cls.id] = classSessions;
-
-            // When all listeners have returned data at least once
-            if (Object.keys(allClassSessionsData).length === enrolledClasses.length) {
-                updateAllSessions();
-                setIsLoading(false);
-            }
-        });
-        unsubscribes.push(unsubscribe);
-    });
-
-    // Cleanup function to unsubscribe from all listeners
-    return () => {
-        unsubscribes.forEach(unsub => unsub());
-    };
-
-  }, [enrolledClasses, presentRecords, firestore, user, isLoadingClasses, isLoadingAttendance]);
+  const { data: attendanceRecords, isLoading } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
+  const sortedRecords = useMemo(() => {
+    if (!attendanceRecords) return [];
+    return [...attendanceRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [attendanceRecords]);
+
   const stats = useMemo(() => {
-    if (isLoading || allSessions.length === 0) {
+    if (!attendanceRecords || attendanceRecords.length === 0) {
       return {
-        totalClasses: enrolledClasses?.length || 0,
+        totalClasses: 0,
         overallPercentage: 0,
       };
     }
-
-    const presentCount = allSessions.filter(r => r.status === 'Present').length;
-    const totalSessions = allSessions.length;
     
+    const totalSessions = attendanceRecords.length;
+    const presentCount = attendanceRecords.filter(r => r.status === 'Present').length;
+    const uniqueClasses = new Set(attendanceRecords.map(r => r.classId));
+
     return {
-      totalClasses: enrolledClasses?.length || 0,
+      totalClasses: uniqueClasses.size,
       overallPercentage: totalSessions > 0 ? (presentCount / totalSessions) * 100 : 0,
     };
-  }, [allSessions, enrolledClasses, isLoading]);
+  }, [attendanceRecords]);
 
   return (
     <div className="space-y-6">
@@ -157,7 +72,7 @@ export default function StudentDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingClasses ? (
+            {isLoading ? (
               <Skeleton className="h-8 w-1/4" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalClasses}</div>
@@ -204,8 +119,8 @@ export default function StudentDashboardPage() {
                     <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   </TableRow>
                 ))
-              ) : allSessions.length > 0 ? (
-                allSessions.map((record) => (
+              ) : sortedRecords.length > 0 ? (
+                sortedRecords.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       {format(parseISO(record.date), "PPP")}
