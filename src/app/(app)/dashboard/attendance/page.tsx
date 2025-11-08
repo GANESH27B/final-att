@@ -245,17 +245,9 @@ export default function AttendancePage() {
     return () => {
         isComponentMounted = false;
         if (scannerRef.current && scannerRef.current.isScanning) {
-            try {
-                scannerRef.current.stop()
-                    .then(() => {
-                        scannerRef.current = null;
-                    })
-                    .catch((err) => {
-                        console.error('Failed to stop scanner cleanly on unmount:', err);
-                    });
-            } catch (err) {
-                console.error("Failed to stop scanner forcefully:", err)
-            }
+            scannerRef.current.clear().catch(error => {
+                console.error("Failed to clear scanner state:", error);
+            });
         }
     };
 }, [sessionActive, markAttendance, toast]);
@@ -403,4 +395,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
