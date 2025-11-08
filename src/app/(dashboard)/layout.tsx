@@ -93,7 +93,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         // User and their role data are loaded.
         setLoading(false);
     }
-  }, [user, userLoading, firestore, router, toast]);
+  }, [user?.uid, userLoading, firestore, router, toast, userData]);
 
   // This is the main loading gate. It shows a loader if either Firebase Auth is working
   // or if we are in the process of fetching the user's role from Firestore.
