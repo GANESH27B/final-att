@@ -111,13 +111,11 @@ export default function StudentDashboardPage() {
   const { data: enrolledClasses, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledClassesQuery);
 
   
-  const { avgAttendance } = useMemo(() => {
-    if (!allAttendanceRecords) return { avgAttendance: 0 };
+  const avgAttendance = useMemo(() => {
+    if (!allAttendanceRecords || allAttendanceRecords.length === 0) return 0;
     
     const presentCount = allAttendanceRecords.filter(r => r.status === 'Present').length;
-    const average = allAttendanceRecords.length > 0 ? (presentCount / allAttendanceRecords.length) * 100 : 0;
-
-    return { avgAttendance: average };
+    return (presentCount / allAttendanceRecords.length) * 100;
   }, [allAttendanceRecords]);
 
   const totalEnrolledClasses = useMemo(() => {
