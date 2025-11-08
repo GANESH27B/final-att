@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Users, BookOpen, Percent } from "lucide-react";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
+import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line, Cell } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUser, useFirestore, useMemoFirebase, useCollection } from "@/firebase";
 import { collection, collectionGroup, query, where } from "firebase/firestore";
@@ -20,7 +20,6 @@ import { format, parseISO } from 'date-fns';
 const chartConfig = {
   attendance: {
     label: "Attendance",
-    color: "hsl(var(--accent))",
   },
 };
 
@@ -52,6 +51,7 @@ export default function FacultyDashboardPage() {
             };
         }
         const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
+        const totalSessions = new Set(attendanceRecords.map(r => r.date + r.classId)).size;
         const avgAttendance = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
         
         return {
@@ -63,7 +63,7 @@ export default function FacultyDashboardPage() {
     const myClassAttendanceData = useMemo(() => {
         if (!myClasses || !attendanceRecords || myClasses.length === 0) return [];
     
-        const classAttendance = myClasses.map((cls, index) => {
+        return myClasses.map((cls, index) => {
             const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
             if (relevantAttendance.length === 0) {
                 return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
@@ -72,16 +72,6 @@ export default function FacultyDashboardPage() {
             const avg = (presentCount / relevantAttendance.length) * 100;
             return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(index % 5) + 1}))` };
         });
-        
-        // Update chartConfig dynamically
-        myClasses.forEach((cls, index) => {
-            const key = cls.name.replace(/\s+/g, '').toLowerCase();
-            if (!chartConfig[key as keyof typeof chartConfig]) {
-                (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
-            }
-        });
-        
-        return classAttendance;
     
     }, [myClasses, attendanceRecords]);
 
@@ -176,8 +166,8 @@ export default function FacultyDashboardPage() {
                        <YAxis domain={[0, 100]} unit="%" />
                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
                        <Bar dataKey="attendance" radius={8}>
-                         {myClassAttendanceData.map((entry) => (
-                           <Bar key={entry.name} dataKey="attendance" fill={entry.fill} />
+                         {myClassAttendanceData.map((entry, index) => (
+                           <Cell key={`cell-${index}`} fill={entry.fill} />
                          ))}
                        </Bar>
                     </BarChart>
