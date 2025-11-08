@@ -103,7 +103,7 @@ export default function StudentDashboardPage() {
   );
   const { data: allAttendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
 
-  // Query for all class enrollments
+  // Query for all class enrollments using the studentId field
   const enrolledClassesQuery = useMemoFirebase(() =>
     firestore && user ? query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid)) : null,
     [firestore, user]
@@ -180,4 +180,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-
