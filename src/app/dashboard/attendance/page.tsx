@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { QrCode, ScanLine, ListChecks, StopCircle, AlertTriangle, UserX, UserCheck, Loader2 } from "lucide-react";
+import { QrCode, ScanLine, ListChecks, StopCircle, AlertTriangle, UserX, UserCheck, Loader2, CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const scannerConfig = {
   fps: 10,
@@ -58,12 +60,13 @@ export default function AttendancePage() {
   
   const [sessionActive, setSessionActive] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [sessionDate, setSessionDate] = useState<string>("");
+  const [sessionDate, setSessionDate] = useState<Date | undefined>(new Date());
   const [manualRegNumber, setManualRegNumber] = useState("");
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [scannerState, setScannerState] = useState<ScannerState>('IDLE');
+  const [useScanner, setUseScanner] = useState(true);
 
   
   const facultyClassesQuery = useMemoFirebase(() =>
@@ -78,9 +81,11 @@ export default function AttendancePage() {
   );
   const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledStudentsQuery);
 
+  const formattedSessionDate = useMemo(() => sessionDate ? format(sessionDate, "yyyy-MM-dd") : "", [sessionDate]);
+
   const attendanceQuery = useMemoFirebase(() =>
-    firestore && selectedClassId && sessionDate ? query(collection(firestore, 'classes', selectedClassId, 'attendance'), where('date', '==', sessionDate)) : null,
-    [firestore, selectedClassId, sessionDate]
+    firestore && selectedClassId && formattedSessionDate ? query(collection(firestore, 'classes', selectedClassId, 'attendance'), where('date', '==', formattedSessionDate)) : null,
+    [firestore, selectedClassId, formattedSessionDate]
   );
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection(attendanceQuery);
 
@@ -94,21 +99,23 @@ export default function AttendancePage() {
 
   const handleClassSelection = (classId: string) => {
     setSelectedClassId(classId);
-    setSessionDate(format(new Date(), "yyyy-MM-dd"));
+    if (!sessionDate) {
+        setSessionDate(new Date());
+    }
     setSessionActive(true);
     setLastScanResult(null);
     toast({
-        title: "Session Started",
-        description: "You can now start taking attendance.",
+        title: "Session Active",
+        description: "You can now manage attendance for the selected class and date.",
     })
   };
 
   const setAttendanceStatus = useCallback(async (student: User, status: 'Present' | 'Absent') => {
-    if (!firestore || !selectedClassId || !sessionDate || !currentUser) return;
+    if (!firestore || !selectedClassId || !formattedSessionDate || !currentUser) return;
 
     const studentId = student.id;
-    const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${sessionDate}_${selectedClassId}`);
-    const classAttendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${sessionDate}_${studentId}`);
+    const studentAttendanceDocRef = doc(firestore, `users/${studentId}/attendance`, `${formattedSessionDate}_${selectedClassId}`);
+    const classAttendanceDocRef = doc(firestore, `classes/${selectedClassId}/attendance`, `${formattedSessionDate}_${studentId}`);
     
     const selectedClass = facultyClasses?.find(c => c.id === selectedClassId);
     const attendanceData = {
@@ -117,7 +124,7 @@ export default function AttendancePage() {
         classId: selectedClassId,
         className: selectedClass?.name || "Unknown Class",
         facultyId: currentUser.uid,
-        date: sessionDate,
+        date: formattedSessionDate,
         status: status,
         timestamp: serverTimestamp(),
     };
@@ -151,7 +158,7 @@ export default function AttendancePage() {
             toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
         }
     }
-  }, [firestore, selectedClassId, sessionDate, currentUser, toast, facultyClasses]);
+  }, [firestore, selectedClassId, formattedSessionDate, currentUser, toast, facultyClasses]);
 
 
   const markAttendance = useCallback(async (studentIdentifier: string) => {
@@ -185,7 +192,6 @@ export default function AttendancePage() {
   const handleEndSession = () => {
     setSessionActive(false);
     setSelectedClassId(null);
-    setSessionDate("");
     setLastScanResult(null);
     toast({
         title: "Session Ended",
@@ -196,7 +202,7 @@ export default function AttendancePage() {
  useEffect(() => {
     const readerElementId = 'reader';
 
-    if (sessionActive) {
+    if (sessionActive && useScanner) {
       if (scannerState !== 'IDLE') return;
 
       setScannerState('INITIALIZING');
@@ -223,10 +229,11 @@ export default function AttendancePage() {
         setScannerState('SCANNING');
       }).catch((err) => {
         setScannerState('ERROR');
+        setUseScanner(false); // Fallback if camera fails
         toast({
           variant: 'destructive',
           title: 'Camera Error',
-          description: err.message || 'Could not start the camera.',
+          description: err.message || 'Could not start camera. Switched to manual mode.',
         });
       });
     } else {
@@ -236,7 +243,6 @@ export default function AttendancePage() {
             scannerRef.current = null;
             setScannerState('IDLE');
         }).catch(() => {
-            // Ignore errors if it fails to stop.
             scannerRef.current?.clear();
             scannerRef.current = null;
             setScannerState('IDLE');
@@ -246,7 +252,6 @@ export default function AttendancePage() {
       }
     }
 
-    // This is a critical cleanup function.
     return () => {
       if (scannerRef.current) {
         if (scannerRef.current.isScanning) {
@@ -256,7 +261,7 @@ export default function AttendancePage() {
         scannerRef.current = null;
       }
     };
-  }, [sessionActive, markAttendance, toast]);
+  }, [sessionActive, useScanner, markAttendance, toast]);
 
 
   const handleSubmitManual = () => {
@@ -270,6 +275,15 @@ export default function AttendancePage() {
   const selectedClassName = facultyClasses?.find(c => c.id === selectedClassId)?.name || "";
 
   const renderScannerOverlay = () => {
+    if (!useScanner) {
+        return (
+             <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80 p-4 text-center">
+                <AlertTriangle className="h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-muted-foreground">Scanner is disabled due to a camera error. Use manual entry below.</p>
+            </div>
+        )
+    }
+
     switch(scannerState) {
         case 'IDLE':
             if (!sessionActive) {
@@ -289,12 +303,11 @@ export default function AttendancePage() {
                 </div>
             );
         case 'ERROR':
-            return (
-                <Alert variant="destructive" className="absolute m-4">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Camera Access Denied</AlertTitle>
-                    <AlertDescription>Please allow camera access in your browser settings to use this feature.</AlertDescription>
-                </Alert>
+             return (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80 p-4 text-center">
+                    <AlertTriangle className="h-12 w-12 text-destructive" />
+                    <p className="mt-4 text-destructive">Camera permission denied. Please enable it in your browser settings.</p>
+                </div>
             );
         case 'SCANNING':
             return null; // No overlay when scanning
@@ -308,34 +321,74 @@ export default function AttendancePage() {
         <Card>
             <CardHeader>
                 <CardTitle>Take Attendance</CardTitle>
-                <CardDescription>Select a class to start an attendance session.</CardDescription>
+                <CardDescription>Select a class and date to start an attendance session.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-                 <Select onValueChange={handleClassSelection} disabled={sessionActive || isLoadingClasses} value={selectedClassId || ""}>
-                    <SelectTrigger className="w-full sm:w-[280px]">
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                 <Select onValueChange={handleClassSelection} disabled={isLoadingClasses} value={selectedClassId || ""}>
+                    <SelectTrigger>
                         <SelectValue placeholder={isLoadingClasses ? "Loading classes..." : "Select a class"} />
                     </SelectTrigger>
                     <SelectContent>
                         {facultyClasses?.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.section}</SelectItem>)}
                     </SelectContent>
                 </Select>
+                 <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                        variant={"outline"}
+                        className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !sessionDate && "text-muted-foreground"
+                        )}
+                        disabled={!sessionActive}
+                        >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {sessionDate ? format(sessionDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                        mode="single"
+                        selected={sessionDate}
+                        onSelect={setSessionDate}
+                        initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
             </CardContent>
+             {sessionActive && (
+                <CardContent>
+                    <Button onClick={handleEndSession} variant="outline" className="w-full">
+                        End Session & Select New Class
+                    </Button>
+                </CardContent>
+            )}
         </Card>
-        <Card>
+        <Card className={cn(!sessionActive && "opacity-50 pointer-events-none")}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ScanLine /> QR/Barcode Scanner</CardTitle>
-            <CardDescription>Scan student IDs or registration numbers to mark attendance.</CardDescription>
+            <div className="flex items-center justify-between">
+                <div>
+                    <CardTitle className="flex items-center gap-2"><ScanLine /> Attendance Input</CardTitle>
+                    <CardDescription>Scan IDs or enter numbers manually.</CardDescription>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <label htmlFor="scanner-toggle" className="text-sm font-medium">Scanner</label>
+                    <Switch id="scanner-toggle" checked={useScanner} onCheckedChange={setUseScanner} disabled={scannerState === 'ERROR'}/>
+                </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                <div id="reader" className="w-full h-full" />
-                {renderScannerOverlay()}
-            </div>
-
-            {sessionActive && (
-                <Button onClick={handleEndSession} variant="destructive" className="w-full mt-4 flex items-center gap-2">
+            {useScanner && (
+                <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden mb-4">
+                    <div id="reader" className="w-full h-full" />
+                    {renderScannerOverlay()}
+                </div>
+            )}
+            
+            {useScanner && sessionActive && (
+                <Button onClick={() => setUseScanner(false)} variant="destructive" className="w-full flex items-center gap-2 mb-4">
                     <StopCircle />
-                    Stop Camera & End Session
+                    Stop Camera & Use Manual Entry
                 </Button>
             )}
 
@@ -353,7 +406,7 @@ export default function AttendancePage() {
 
             <div className="mt-4 flex flex-col sm:flex-row items-center gap-4">
               <Input 
-                placeholder="Or enter registration number manually" 
+                placeholder="Enter registration number manually" 
                 disabled={!sessionActive} 
                 value={manualRegNumber}
                 onChange={e => setManualRegNumber(e.target.value)}
@@ -370,7 +423,7 @@ export default function AttendancePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ListChecks /> Attendance Summary</CardTitle>
             <CardDescription>
-              Live summary for <strong>{selectedClassName || "No Class Selected"}</strong>
+              Summary for <strong>{selectedClassName || "No Class"}</strong> on <strong>{sessionDate ? format(sessionDate, "PPP") : 'No Date'}</strong>
             </CardDescription>
           </CardHeader>
           <CardContent>
