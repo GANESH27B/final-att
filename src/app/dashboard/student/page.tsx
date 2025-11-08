@@ -18,48 +18,122 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query } from "firebase/firestore";
-import { AttendanceRecord } from "@/lib/types";
-import { useMemo } from "react";
+import { collection, query, where, collectionGroup } from "firebase/firestore";
+import { AttendanceRecord, Class } from "@/lib/types";
+import { useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 
+type CombinedAttendanceRecord = {
+  id: string;
+  date: string;
+  className: string;
+  status: "Present" | "Absent";
+};
 
 export default function StudentDashboardPage() {
   const firestore = useFirestore();
   const { user } = useUser();
 
-  const studentAttendanceQuery = useMemoFirebase(
-    () =>
-      firestore && user
-        ? query(collection(firestore, `users/${user.uid}/attendance`))
-        : null,
+  // 1. Get all classes the student is enrolled in
+  const enrolledClassesQuery = useMemoFirebase(() =>
+    firestore && user ? query(collection(firestore, 'classes'), where('studentIds', 'array-contains', user.uid)) : null,
     [firestore, user]
   );
-  const { data: attendanceRecords, isLoading } = useCollection<AttendanceRecord>(studentAttendanceQuery);
-  
-  const sortedRecords = useMemo(() => {
-    if (!attendanceRecords) return [];
-    return [...attendanceRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [attendanceRecords]);
+  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(enrolledClassesQuery);
 
-  const stats = useMemo(() => {
-    if (!attendanceRecords || attendanceRecords.length === 0) {
+  // 2. Get all attendance records for those classes
+  const classAttendanceQuery = useMemoFirebase(() => 
+    firestore && enrolledClasses && enrolledClasses.length > 0
+      ? query(collectionGroup(firestore, 'attendance'), where('classId', 'in', enrolledClasses.map(c => c.id)))
+      : null,
+    [firestore, enrolledClasses]
+  );
+  const { data: allClassAttendance, isLoading: isLoadingClassAttendance } = useCollection<AttendanceRecord>(classAttendanceQuery);
+
+  // 3. Get the student's personal "Present" records
+  const studentPresentRecordsQuery = useMemoFirebase(() =>
+    firestore && user ? query(collection(firestore, `users/${user.uid}/attendance`), where('status', '==', 'Present')) : null,
+    [firestore, user]
+  );
+  const { data: studentPresentRecords, isLoading: isLoadingStudentRecords } = useCollection<AttendanceRecord>(studentPresentRecordsQuery);
+  
+  const isLoading = isLoadingClasses || isLoadingClassAttendance || isLoadingStudentRecords;
+
+  const { combinedAttendance, stats } = useMemo(() => {
+    if (!enrolledClasses || !allClassAttendance || !studentPresentRecords) {
       return {
-        totalClasses: 0,
-        overallPercentage: 0,
+        combinedAttendance: [],
+        stats: { totalClasses: 0, overallPercentage: 0 },
       };
     }
-    
-    const totalSessions = attendanceRecords.length;
-    const presentCount = attendanceRecords.filter(r => r.status === 'Present').length;
-    const uniqueClasses = new Set(attendanceRecords.map(r => r.classId));
 
-    return {
-      totalClasses: uniqueClasses.size,
+    const presentRecordKeys = new Set(studentPresentRecords.map(r => `${r.classId}-${r.date}`));
+    
+    // Create a map of all unique class sessions that have occurred
+    const allSessions = new Map<string, Omit<CombinedAttendanceRecord, 'status'>>();
+    allClassAttendance.forEach(record => {
+      const sessionKey = `${record.classId}-${record.date}`;
+      if (!allSessions.has(sessionKey)) {
+        allSessions.set(sessionKey, {
+          id: sessionKey,
+          date: record.date,
+          className: record.className || enrolledClasses.find(c => c.id === record.classId)?.name || "Unknown Class",
+        });
+      }
+    });
+    
+    // Filter sessions to only include those relevant to the current student
+    const studentSessions = Array.from(allSessions.values()).filter(session => {
+        const studentIsEnrolled = allClassAttendance.some(att => att.classId === session.id.split('-')[0] && att.studentId === user?.uid);
+        // A session is relevant if an attendance record (present or absent) exists for that student in that class
+        const studentRecordExistsForClass = allClassAttendance.some(att => att.classId === session.id.split('-')[0] && att.studentId === user?.uid);
+        
+        // Let's refine the logic. A session is relevant if the student was enrolled in the class *when* attendance was taken.
+        // The most reliable way is to see if *any* attendance record for the student exists in that class's log.
+        // allClassAttendance contains all records for all students in the enrolled classes.
+        // We need to find all unique sessions for the classes the student is in.
+        return true; // For now, let's just use all sessions from their classes.
+    });
+    
+    const uniqueStudentSessions = new Map<string, Omit<CombinedAttendanceRecord, 'status'>>();
+    allClassAttendance.forEach(record => {
+        if (record.studentId === user?.uid) {
+            const sessionKey = `${record.classId}-${record.date}`;
+            if (!uniqueStudentSessions.has(sessionKey)) {
+                uniqueStudentSessions.set(sessionKey, {
+                    id: sessionKey,
+                    date: record.date,
+                    className: record.className || enrolledClasses.find(c => c.id === record.classId)?.name || "Unknown Class",
+                });
+            }
+        }
+    });
+
+
+    const finalAttendance: CombinedAttendanceRecord[] = Array.from(uniqueStudentSessions.values()).map(session => {
+      const sessionKey = session.id;
+      const isPresent = presentRecordKeys.has(sessionKey);
+      return {
+        ...session,
+        status: isPresent ? "Present" : "Absent",
+      };
+    });
+    
+    const totalSessions = finalAttendance.length;
+    const presentCount = finalAttendance.filter(r => r.status === 'Present').length;
+
+    const newStats = {
+      totalClasses: enrolledClasses.length,
       overallPercentage: totalSessions > 0 ? (presentCount / totalSessions) * 100 : 0,
     };
-  }, [attendanceRecords]);
+    
+    const sortedAttendance = finalAttendance.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    return { combinedAttendance: sortedAttendance, stats: newStats };
+
+  }, [enrolledClasses, allClassAttendance, studentPresentRecords, user]);
+
 
   return (
     <div className="space-y-6">
@@ -119,8 +193,8 @@ export default function StudentDashboardPage() {
                     <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   </TableRow>
                 ))
-              ) : sortedRecords.length > 0 ? (
-                sortedRecords.map((record) => (
+              ) : combinedAttendance.length > 0 ? (
+                combinedAttendance.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       {format(parseISO(record.date), "PPP")}
