@@ -12,8 +12,8 @@ import {
 import { Users, BookOpen, Bot, FileText, ImageIcon, Lightbulb, Loader2 } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { Class, User as UserType, AttendanceRecord } from "@/lib/types";
-import { useMemo, useState, useTransition } from "react";
+import { Class, User as UserType } from "@/lib/types";
+import { useMemo, useState, useTransition, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -300,5 +300,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
