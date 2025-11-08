@@ -282,9 +282,6 @@ export default function AttendancePage() {
                         {facultyClasses?.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.section}</SelectItem>)}
                     </SelectContent>
                 </Select>
-                <div className="flex gap-2">
-                    <Button onClick={handleEndSession} disabled={!sessionActive} variant="destructive"><StopCircle/> End Session</Button>
-                </div>
             </CardContent>
         </Card>
         <Card>
