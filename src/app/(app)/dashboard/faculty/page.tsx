@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -81,19 +82,34 @@ export default function FacultyDashboardPage() {
 
   // 4. Calculate stats
   const stats = useMemo(() => {
-    const totalClasses = facultyClasses?.length || 0;
-    
     if (!attendanceRecords || attendanceRecords.length === 0) {
       return { avgAttendance: 0 };
     }
 
-    const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
-    const avgAttendance = (presentCount / attendanceRecords.length) * 100;
+    const attendanceByDate: { [date: string]: { present: number, total: number } } = {};
+
+    attendanceRecords.forEach(record => {
+      if (!attendanceByDate[record.date]) {
+        attendanceByDate[record.date] = { present: 0, total: 0 };
+      }
+      attendanceByDate[record.date].total++;
+      if (record.status === 'Present') {
+        attendanceByDate[record.date].present++;
+      }
+    });
+
+    const dailyPercentages = Object.values(attendanceByDate).map(
+      daily => (daily.present / daily.total) * 100
+    );
+
+    const avgAttendance = dailyPercentages.length > 0 
+      ? dailyPercentages.reduce((a, b) => a + b, 0) / dailyPercentages.length 
+      : 0;
 
     return {
       avgAttendance,
     };
-  }, [facultyClasses, attendanceRecords]);
+  }, [attendanceRecords]);
 
   // 5. Calculate data for charts
    const myClassAttendanceData = useMemo(() => {
