@@ -238,7 +238,7 @@
           "schema": {
             "$ref": "#/backend/entities/Student"
           },
-          "description": "Subcollection for students enrolled in a specific class. Includes denormalized 'classId' for authorization independence.",
+          "description": "Subcollection for students enrolled in a specific class. Includes a denormalized 'classId' field for authorization independence within security rules.",
           "params": [
             {
               "name": "classId",

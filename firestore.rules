@@ -95,6 +95,7 @@ service cloud.firestore {
     // A student can read their own attendance records. A faculty member can write an attendance record if they own the class.
     match /users/{userId}/attendance/{attendanceId} {
       allow read, list: if isOwner(userId);
+      // Allow write if the requester is the owner of the class the attendance record belongs to.
       allow write: if isClassOwner(request.resource.data.classId);
     }
 
