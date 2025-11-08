@@ -76,10 +76,10 @@ export default function MyClassesPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  // Query the 'students' collection group to find all student documents matching the current user's ID.
+  // Query the 'students' collection group to find all enrollment documents for the current user.
   const studentEnrollmentsQuery = useMemoFirebase(() => {
     if (!firestore || !currentUser) return null;
-    return query(collectionGroup(firestore, 'students'), where(documentId(), '==', currentUser.uid));
+    return query(collectionGroup(firestore, 'students'), where('id', '==', currentUser.uid));
   }, [firestore, currentUser]);
 
   // This hook now returns documents from the 'students' subcollections where the student is enrolled.
