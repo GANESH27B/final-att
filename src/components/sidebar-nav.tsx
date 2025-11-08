@@ -48,6 +48,7 @@ const facultyNav = [
 
 const studentNav = [
     { href: "/dashboard/student", icon: Home, label: "Dashboard" },
+    { href: "/dashboard/my-classes", icon: BookOpen, label: "My Classes" },
 ];
 
 const commonNav = [
