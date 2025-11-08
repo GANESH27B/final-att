@@ -128,26 +128,24 @@ export default function FacultyDashboardPage() {
 
     return facultyClasses.map(cls => {
       const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
-      if (relevantAttendance.length === 0) {
-        return { name: cls.name, attendance: 0 };
-      }
       
       const sessions = new Map<string, {present: number, total: number}>();
       
       relevantAttendance.forEach(record => {
         if (!sessions.has(record.date)) {
-          sessions.set(record.date, { present: 0, total: 0 });
+            // Count total students for this specific session
+            const sessionStudents = new Set(relevantAttendance.filter(r => r.date === record.date).map(r => r.studentId));
+            sessions.set(record.date, { present: 0, total: sessionStudents.size });
         }
         const session = sessions.get(record.date)!;
-        session.total++;
         if (record.status === 'Present') {
-          session.present++;
+            session.present++;
         }
       });
       
       if (sessions.size === 0) return { name: cls.name, attendance: 0 };
 
-      const sessionAverages = Array.from(sessions.values()).map(s => (s.present / s.total) * 100);
+      const sessionAverages = Array.from(sessions.values()).map(s => s.total > 0 ? (s.present / s.total) * 100 : 0);
       const avg = sessionAverages.reduce((a, b) => a + b, 0) / sessionAverages.length;
 
       return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
@@ -182,10 +180,11 @@ export default function FacultyDashboardPage() {
         monthRecords.forEach(record => {
           const sessionId = `${record.classId}-${record.date}`;
           if (!sessions.has(sessionId)) {
-            sessions.set(sessionId, { present: 0, total: 0 });
+            // Count total students for this specific session
+            const sessionStudents = new Set(monthRecords.filter(r => r.classId === record.classId && r.date === record.date).map(r => r.studentId));
+            sessions.set(sessionId, { present: 0, total: sessionStudents.size });
           }
           const session = sessions.get(sessionId)!;
-          session.total++;
           if (record.status === 'Present') {
             session.present++;
           }
@@ -196,7 +195,7 @@ export default function FacultyDashboardPage() {
         }
 
         // Calculate the percentage for each session and average them
-        const sessionPercentages = Array.from(sessions.values()).map(s => (s.present / s.total) * 100);
+        const sessionPercentages = Array.from(sessions.values()).map(s => s.total > 0 ? (s.present / s.total) * 100 : 0);
         const monthlyAverage = sessionPercentages.reduce((acc, p) => acc + p, 0) / sessionPercentages.length;
 
         return {
@@ -244,32 +243,7 @@ export default function FacultyDashboardPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <Card>
-            <CardHeader>
-                <CardTitle>My Class Attendance</CardTitle>
-                <CardDescription>Average attendance percentage for your classes.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
-                    myClassAttendanceData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                            <BarChart data={myClassAttendanceData} accessibilityLayer>
-                               <CartesianGrid vertical={false} />
-                               <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
-                               <YAxis domain={[0, 100]} />
-                               <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                               <Bar dataKey="attendance" fill="hsl(var(--primary))" radius={8} />
-                            </BarChart>
-                        </ChartContainer>
-                    ) : (
-                        <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
-                            No attendance data to display.
-                        </div>
-                    )
-                )}
-            </CardContent>
-        </Card>
+      <div className="grid gap-4 grid-cols-1">
         <Card>
             <CardHeader>
                 <CardTitle>Overall Attendance Trend</CardTitle>
