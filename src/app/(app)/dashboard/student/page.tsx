@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, collectionGroup, query, where, documentId } from "firebase/firestore";
+import { collection, collectionGroup, query, where } from "firebase/firestore";
 import { AttendanceRecord, Class } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +23,7 @@ export default function StudentDashboardPage() {
   );
 
   const studentEnrollmentsQuery = useMemoFirebase(() => 
-    firestore && user ? query(collectionGroup(firestore, 'students'), where(documentId(), '==', user.uid)) : null,
+    firestore && user ? query(collectionGroup(firestore, 'students'), where('id', '==', user.uid)) : null,
     [firestore, user]
   );
 
