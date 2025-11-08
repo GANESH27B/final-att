@@ -245,13 +245,17 @@ export default function AttendancePage() {
     return () => {
         isComponentMounted = false;
         if (scannerRef.current && scannerRef.current.isScanning) {
-            scannerRef.current.stop()
-                .then(() => {
-                    scannerRef.current = null;
-                })
-                .catch((err) => {
-                    console.error('Failed to stop scanner cleanly on unmount:', err);
-                });
+            try {
+                scannerRef.current.stop()
+                    .then(() => {
+                        scannerRef.current = null;
+                    })
+                    .catch((err) => {
+                        console.error('Failed to stop scanner cleanly on unmount:', err);
+                    });
+            } catch (err) {
+                console.error("Failed to stop scanner forcefully:", err)
+            }
         }
     };
 }, [sessionActive, markAttendance, toast]);
@@ -284,7 +288,7 @@ export default function AttendancePage() {
                     </SelectContent>
                 </Select>
                 {sessionActive && (
-                    <Button onClick={handleEndSession} variant="destructive">
+                    <Button onClick={handleEndSession} variant="destructive" className="flex items-center gap-2">
                         <StopCircle />
                         End Session
                     </Button>
