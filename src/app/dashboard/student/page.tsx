@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot, Unsubscribe } from "firebase/firestore";
 import { Class, AttendanceRecord } from "@/lib/types";
 import { useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,7 +38,7 @@ export default function StudentDashboardPage() {
   const [allSessions, setAllSessions] = useState<CombinedAttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Get all classes the student is enrolled in.
+  // 1. Get all classes the student is enrolled in (real-time).
   const enrolledClassesQuery = useMemoFirebase(
     () => 
       firestore && user 
@@ -48,7 +48,7 @@ export default function StudentDashboardPage() {
   );
   const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(enrolledClassesQuery);
 
-  // 2. Get all of the student's "Present" attendance records.
+  // 2. Get all of the student's "Present" attendance records (real-time).
   const studentAttendanceQuery = useMemoFirebase(
     () =>
       firestore && user
@@ -59,6 +59,7 @@ export default function StudentDashboardPage() {
   const { data: presentRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
 
 
+  // 3. Set up real-time listeners for all class sessions.
   useEffect(() => {
     if (isLoadingClasses || isLoadingAttendance) {
         setIsLoading(true);
@@ -71,40 +72,60 @@ export default function StudentDashboardPage() {
         return;
     }
 
-    const fetchAllClassSessions = async () => {
-        setIsLoading(true);
-        const allClassSessions: CombinedAttendanceRecord[] = [];
-        const studentPresentRecordsMap = new Map(presentRecords?.map(r => `${r.classId}-${r.date}`));
+    setIsLoading(true);
+    const unsubscribes: Unsubscribe[] = [];
+    let allClassSessionsData: { [classId: string]: CombinedAttendanceRecord[] } = {};
 
-        for (const cls of enrolledClasses) {
-            // Get all attendance documents for this class to find all unique session dates
-            const classAttendanceQuery = query(collection(firestore, `classes/${cls.id}/attendance`));
-            const classAttendanceSnap = await getDocs(classAttendanceQuery);
-            
+    const studentPresentRecordsMap = new Map(presentRecords?.map(r => `${r.classId}-${r.date}`));
+
+    const updateAllSessions = () => {
+        const combinedSessions = Object.values(allClassSessionsData).flat();
+        combinedSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setAllSessions(combinedSessions);
+    };
+
+    if (enrolledClasses.length === 0) {
+      setIsLoading(false);
+      setAllSessions([]);
+      return;
+    }
+
+    enrolledClasses.forEach((cls, index) => {
+        const classAttendanceQuery = query(collection(firestore, `classes/${cls.id}/attendance`));
+        
+        const unsubscribe = onSnapshot(classAttendanceQuery, (querySnapshot) => {
             const sessionDates = new Set<string>();
-            classAttendanceSnap.forEach(doc => {
+            querySnapshot.forEach(doc => {
                 sessionDates.add(doc.data().date);
             });
             
+            const classSessions: CombinedAttendanceRecord[] = [];
             sessionDates.forEach(date => {
                 const sessionKey = `${cls.id}-${date}`;
                 const isPresent = studentPresentRecordsMap.has(sessionKey);
-                allClassSessions.push({
+                classSessions.push({
                     id: sessionKey,
                     className: cls.name,
                     date: date,
                     status: isPresent ? 'Present' : 'Absent',
                 });
             });
-        }
-        
-        // Sort sessions by date, most recent first
-        allClassSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setAllSessions(allClassSessions);
-        setIsLoading(false);
-    };
 
-    fetchAllClassSessions();
+            allClassSessionsData[cls.id] = classSessions;
+
+            // When all listeners have returned data at least once
+            if (Object.keys(allClassSessionsData).length === enrolledClasses.length) {
+                updateAllSessions();
+                setIsLoading(false);
+            }
+        });
+        unsubscribes.push(unsubscribe);
+    });
+
+    // Cleanup function to unsubscribe from all listeners
+    return () => {
+        unsubscribes.forEach(unsub => unsub());
+    };
 
   }, [enrolledClasses, presentRecords, firestore, user, isLoadingClasses, isLoadingAttendance]);
   
