@@ -127,9 +127,13 @@ service cloud.firestore {
       // Read/List: Admin or the class owner can see the enrolled students.
       allow read, list: if isAdmin() || isClassOwner(classId);
       
-      // Create/Update/Delete: Only the class owner or an admin can manage the roster.
+      // Create/Update: Only the class owner or an admin can manage the roster.
       // We also check that the denormalized classId in the student record matches the path.
-      allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
+      allow create, update: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
+      
+      // Delete: Only the class owner or an admin can remove a student.
+      // We check against the existing document's data (`resource.data`) for deletes.
+      allow delete: if (isAdmin() || isClassOwner(classId)) && resource.data.classId == classId;
     }
 
     // Rules for attendance records within a class
