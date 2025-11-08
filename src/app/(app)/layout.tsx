@@ -21,7 +21,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const firestore = useFirestore();
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const { toast } = useToast();
+  
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     // Wait until Firebase Auth has determined the user's status.
@@ -106,12 +120,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <h1 className="text-xl font-semibold font-headline">AttendSync</h1>
            </div>
           <div className="flex items-center gap-2 ml-auto">
-             <Badge variant="outline" className="hidden sm:flex items-center gap-2">
+             <Badge variant={isOnline ? 'outline' : 'secondary'} className="hidden sm:flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    {isOnline ? (
+                      <>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                      </>
+                    ) : (
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-400"></span>
+                    )}
                 </span>
-                Online
+                {isOnline ? "Online" : "Offline"}
              </Badge>
             <ThemeToggle />
             <UserNav />
