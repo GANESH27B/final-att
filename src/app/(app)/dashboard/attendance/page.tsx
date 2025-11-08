@@ -178,10 +178,6 @@ export default function AttendancePage() {
   
   const handleEndSession = () => {
     setSessionActive(false);
-    setSelectedClassId(null);
-    setSessionDate("");
-    setLastScanResult(null);
-    setHasCameraPermission(null); // Reset camera permission state
     toast({
         title: "Session Ended",
         description: "You can select a new class to start another session.",
@@ -189,69 +185,90 @@ export default function AttendancePage() {
   };
   
   useEffect(() => {
-    let isComponentMounted = true;
-    
-    if (sessionActive) {
-      const initializeScanner = async () => {
-          try {
-              await navigator.mediaDevices.getUserMedia({ video: true });
-              if (isComponentMounted) setHasCameraPermission(true);
-          } catch (err) {
-              console.error('Camera permission error:', err);
-              if (isComponentMounted) setHasCameraPermission(false);
-              toast({
-                  variant: 'destructive',
-                  title: 'Camera Access Denied',
-                  description: 'Please allow camera access in your browser settings to use this feature.',
-              });
-              return; // Stop if no permission
-          }
-        
-          if (!isComponentMounted || scannerRef.current) return;
-        
-          const scanner = new Html5Qrcode('reader', {
-              verbose: false,
-              formatsToSupport: scannerConfig.supportedScanTypes,
-          });
-          scannerRef.current = scanner;
-
-          scanner.start(
-              { facingMode: 'environment' },
-              scannerConfig,
-              (decodedText) => {
-                  markAttendance(decodedText);
-                  if (scannerRef.current?.isScanning) {
-                      try {
-                          scannerRef.current.pause(true);
-                          setTimeout(() => scannerRef.current?.resume(), 1500);
-                      } catch (e) {
-                          console.warn("Could not pause/resume scanner", e);
-                      }
-                  }
-              },
-              () => { /* ignore errors */ }
-          ).catch((err) => {
-              console.error('Scanner start error:', err);
-              if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
-                  if (isComponentMounted) setHasCameraPermission(false);
-              }
-          });
-      };
-
-      initializeScanner();
+    if (!sessionActive) {
+      return;
     }
+
+    let isComponentMounted = true;
+    const readerElementId = 'reader';
+
+    const initializeScanner = async () => {
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        if (isComponentMounted) setHasCameraPermission(true);
+      } catch (err) {
+        console.error('Camera permission error:', err);
+        if (isComponentMounted) setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please allow camera access in your browser settings to use this feature.',
+        });
+        return;
+      }
+
+      if (!isComponentMounted || scannerRef.current) return;
+      
+      const scanner = new Html5Qrcode(readerElementId, {
+        verbose: false,
+        formatsToSupport: scannerConfig.supportedScanTypes,
+      });
+      scannerRef.current = scanner;
+
+      scanner.start(
+        { facingMode: 'environment' },
+        scannerConfig,
+        (decodedText) => {
+          markAttendance(decodedText);
+          if (scannerRef.current?.isScanning) {
+            try {
+              scannerRef.current.pause(true);
+              setTimeout(() => scannerRef.current?.resume(), 1500);
+            } catch (e) {
+              console.warn("Could not pause/resume scanner", e);
+            }
+          }
+        },
+        () => { /* ignore errors */ }
+      ).catch((err) => {
+        console.error('Scanner start error:', err);
+        if (isComponentMounted && (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError'))) {
+          setHasCameraPermission(false);
+        }
+      });
+    };
+
+    initializeScanner();
 
     // Cleanup function
     return () => {
-        isComponentMounted = false;
-        if (scannerRef.current && scannerRef.current.isScanning) {
-            scannerRef.current.clear().catch(error => {
-                console.error("Failed to clear scanner state:", error);
-            });
-        }
+      isComponentMounted = false;
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop()
+          .then(() => {
+            scannerRef.current?.clear();
+            scannerRef.current = null;
+          })
+          .catch((err) => {
+            console.error('Failed to stop scanner on cleanup:', err);
+          });
+      }
     };
-}, [sessionActive, markAttendance, toast]);
-  
+  }, [sessionActive, markAttendance, toast]);
+
+  const resetSession = () => {
+    setSelectedClassId(null);
+    setSessionDate("");
+    setLastScanResult(null);
+    setHasCameraPermission(null);
+  };
+
+  useEffect(() => {
+    if (!sessionActive) {
+      resetSession();
+    }
+  }, [sessionActive]);
+
   const handleSubmitManual = () => {
     if (manualRegNumber) {
         markAttendance(manualRegNumber.trim());
