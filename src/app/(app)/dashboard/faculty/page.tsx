@@ -11,10 +11,19 @@ import {
 import { Users, BookOpen } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { Class } from "@/lib/types";
-import { useState, useEffect } from "react";
+import { Class, AttendanceRecord } from "@/lib/types";
+import { useState, useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, LineChart, Line } from "recharts";
+import { format, parseISO } from 'date-fns';
 
+const chartConfig = {
+  attendance: {
+    label: "Attendance",
+    color: "hsl(var(--accent))",
+  },
+};
 
 export default function FacultyDashboardPage() {
   const firestore = useFirestore();
@@ -23,6 +32,8 @@ export default function FacultyDashboardPage() {
   // States for dashboard stats
   const [studentCount, setStudentCount] = useState(0);
   const [isLoadingStudents, setIsLoadingStudents] = useState(true);
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
 
   // 1. Fetch classes for the current faculty
   const facultyClassesQuery = useMemoFirebase(() => 
@@ -31,18 +42,47 @@ export default function FacultyDashboardPage() {
   );
   const { data: facultyClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
 
-  // 2. Fetch total students
+  // 2. Fetch all attendance records for all of the faculty's classes
+  useEffect(() => {
+    if (facultyClasses && firestore) {
+      setIsLoadingAttendance(true);
+      if (facultyClasses.length === 0) {
+        setAllAttendance([]);
+        setIsLoadingAttendance(false);
+        return;
+      }
+      const fetchAttendancePromises = facultyClasses.map(cls => {
+        const attendanceCollectionRef = collection(firestore, 'classes', cls.id, 'attendance');
+        return getDocs(attendanceCollectionRef);
+      });
+
+      Promise.all(fetchAttendancePromises)
+        .then(snapshots => {
+          const records: AttendanceRecord[] = [];
+          snapshots.forEach(snapshot => {
+            snapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() } as AttendanceRecord));
+          });
+          setAllAttendance(records);
+        })
+        .finally(() => setIsLoadingAttendance(false));
+
+    } else if (!isLoadingClasses) {
+        setIsLoadingAttendance(false);
+    }
+  }, [facultyClasses, firestore, isLoadingClasses]);
+
+
+  // 3. Fetch total unique students
   useEffect(() => {
     if (facultyClasses && firestore) {
       setIsLoadingStudents(true);
-      let totalStudents = new Set<string>();
-
       if (facultyClasses.length === 0) {
         setStudentCount(0);
         setIsLoadingStudents(false);
         return;
       }
 
+      const studentIds = new Set<string>();
       const fetchStudentsPromises = facultyClasses.map(cls => {
         const studentsCollectionRef = collection(firestore, 'classes', cls.id, 'students');
         return getDocs(studentsCollectionRef);
@@ -51,9 +91,9 @@ export default function FacultyDashboardPage() {
       Promise.all(fetchStudentsPromises)
         .then(snapshots => {
           snapshots.forEach(snapshot => {
-            snapshot.forEach(doc => totalStudents.add(doc.id));
+            snapshot.forEach(doc => studentIds.add(doc.id));
           });
-          setStudentCount(totalStudents.size);
+          setStudentCount(studentIds.size);
         })
         .finally(() => setIsLoadingStudents(false));
     } else if (!isLoadingClasses) {
@@ -62,7 +102,66 @@ export default function FacultyDashboardPage() {
     }
   }, [facultyClasses, firestore, isLoadingClasses]);
 
-  const isLoading = isLoadingClasses || isLoadingStudents;
+  const classAttendanceData = useMemo(() => {
+    if (!facultyClasses || !allAttendance || facultyClasses.length === 0) return [];
+    
+    const classAttendance = facultyClasses.map(cls => {
+        const relevantAttendance = allAttendance.filter(a => a.classId === cls.id);
+        if (relevantAttendance.length === 0) {
+            return { name: cls.name, attendance: 0 };
+        }
+        const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+        const avg = (presentCount / relevantAttendance.length) * 100;
+        return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(facultyClasses.indexOf(cls) % 5) + 1}))` };
+    });
+
+    // Update chartConfig dynamically
+    facultyClasses.forEach((cls, index) => {
+        const key = cls.name.replace(/\s+/g, '').toLowerCase();
+        if (!chartConfig[key as keyof typeof chartConfig]) {
+            (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
+        }
+    });
+
+    return classAttendance.sort((a,b) => b.attendance - a.attendance);
+
+  }, [facultyClasses, allAttendance]);
+
+  const overallAttendanceData = useMemo(() => {
+    if (!allAttendance || allAttendance.length === 0) return [];
+
+    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
+
+    allAttendance.forEach(record => {
+        try {
+            const month = format(parseISO(record.date), 'MMM');
+            if (!attendanceByMonth[month]) {
+                attendanceByMonth[month] = { present: 0, total: 0 };
+            }
+            attendanceByMonth[month].total++;
+            if (record.status === 'Present') {
+                attendanceByMonth[month].present++;
+            }
+        } catch(e) {
+            // Ignore invalid date formats
+        }
+    });
+
+    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    return monthOrder
+        .filter(month => attendanceByMonth[month])
+        .map(month => {
+            const { present, total } = attendanceByMonth[month];
+            return {
+                date: month,
+                attendance: parseFloat(((present / total) * 100).toFixed(1)),
+            };
+        });
+
+  }, [allAttendance]);
+
+  const isLoading = isLoadingClasses || isLoadingStudents || isLoadingAttendance;
 
   return (
     <div className="space-y-4">
@@ -89,6 +188,61 @@ export default function FacultyDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>My Class Attendance</CardTitle>
+            <CardDescription>Average attendance percentage for your classes.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+                classAttendanceData.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                        <BarChart data={classAttendanceData} accessibilityLayer>
+                           <CartesianGrid vertical={false} />
+                           <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
+                           <YAxis domain={[0, 100]} />
+                           <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                           <Bar dataKey="attendance" radius={8} />
+                        </BarChart>
+                    </ChartContainer>
+                ) : (
+                    <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                        No attendance data to display.
+                    </div>
+                )
+             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Overall Attendance Trend</CardTitle>
+            <CardDescription>Your students' monthly attendance trend.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
+                overallAttendanceData.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                        <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                          <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                        </LineChart>
+                    </ChartContainer>
+                ) : (
+                     <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
+                        Not enough data for a trend graph.
+                    </div>
+                )
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
+
+    
