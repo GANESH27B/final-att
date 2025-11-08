@@ -120,7 +120,7 @@ service cloud.firestore {
 
       // Write: Only the class owner (faculty) or an admin can create/modify attendance.
       // We also check for data consistency.
-      allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId;
+      allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId && request.resource.data.facultyId == get(/databases/$(database)/documents/classes/$(classId)).data.facultyId;
     }
 
     // Collection group queries for attendance.
@@ -139,3 +139,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

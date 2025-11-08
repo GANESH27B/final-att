@@ -51,7 +51,6 @@ export default function FacultyDashboardPage() {
             };
         }
         const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
-        const totalSessions = new Set(attendanceRecords.map(r => r.date + r.classId)).size;
         const avgAttendance = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
         
         return {
@@ -209,3 +208,5 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
+
+    
