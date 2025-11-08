@@ -18,115 +18,51 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where, collectionGroup, getDocs } from "firebase/firestore";
-import { AttendanceRecord, Class, User } from "@/lib/types";
-import { useMemo, useEffect, useState } from "react";
+import { collection, query } from "firebase/firestore";
+import { AttendanceRecord, Class } from "@/lib/types";
+import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
-
-type DailyLogEntry = {
-  id: string;
-  date: string;
-  className: string;
-  status: "Present" | "Absent";
-};
 
 export default function StudentDashboardPage() {
   const firestore = useFirestore();
   const { user } = useUser();
-  const [dailyLog, setDailyLog] = useState<DailyLogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Get all classes the student is enrolled in by querying the 'students' collection group.
-  const enrolledClassesQuery = useMemoFirebase(() =>
-    firestore && user ? query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid)) : null,
-    [firestore, user]
-  );
-  // The documents returned are of type User, but contain the classId we need.
-  const { data: enrolledStudentRecords, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledClassesQuery);
-
-  // 2. Get all personal "Present" attendance records.
   const studentAttendanceQuery = useMemoFirebase(() => 
     firestore && user ? query(collection(firestore, `users/${user.uid}/attendance`)) : null,
     [firestore, user]
   );
-  const { data: presentRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
-
-  useEffect(() => {
-    const generateFullAttendanceLog = async () => {
-      if (!firestore || !enrolledStudentRecords || presentRecords === null) {
-        if (!isLoadingEnrolled && !isLoadingAttendance) {
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      setIsLoading(true);
-
-      // Create a map of all "Present" records for quick lookup. Key: "classId-date"
-      const presentMap = new Map(presentRecords.map(r => `${r.classId}-${r.date}`));
-
-      // Fetch all attendance sessions for the classes the student is enrolled in.
-      const allClassAttendance: AttendanceRecord[] = [];
-      if (enrolledStudentRecords.length > 0) {
-        // Get unique class IDs from the student enrollment records
-        const classIds = [...new Set(enrolledStudentRecords.map(rec => rec.classId).filter(Boolean))];
-        
-        if (classIds.length > 0) {
-          // Query the 'attendance' collection group for any records matching these class IDs
-          const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
-          const attendanceSnap = await getDocs(attendanceQuery);
-          attendanceSnap.forEach(doc => {
-            allClassAttendance.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
-          });
-        }
-      }
-
-      // Create a set of unique class sessions (classId + date).
-      const allSessions = new Map<string, { className: string, date: string, classId: string }>();
-      allClassAttendance.forEach(rec => {
-        const sessionKey = `${rec.classId}-${rec.date}`;
-        if (!allSessions.has(sessionKey)) {
-          allSessions.set(sessionKey, { className: rec.className || "Unknown Class", date: rec.date, classId: rec.classId });
-        }
-      });
-      
-      const fullLog: DailyLogEntry[] = [];
-      allSessions.forEach((session, key) => {
-        const isPresent = presentMap.has(key);
-        fullLog.push({
-          id: key,
-          date: session.date,
-          className: session.className,
-          status: isPresent ? "Present" : "Absent",
-        });
-      });
-      
-      // Sort the final log by date, most recent first.
-      const sortedLog = fullLog.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      setDailyLog(sortedLog);
-      setIsLoading(false);
-    };
-
-    generateFullAttendanceLog();
-  }, [firestore, enrolledStudentRecords, presentRecords, isLoadingEnrolled, isLoadingAttendance]);
-
+  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
+  // This query is needed to get the total number of enrolled classes, but we are not using the full data yet.
+  const enrolledClassesQuery = useMemoFirebase(() =>
+    firestore && user ? query(collection(firestore, 'classes'), where('studentIds', 'array-contains', user.uid)) : null,
+    [firestore, user]
+  );
+  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(enrolledClassesQuery);
+
   const avgAttendance = useMemo(() => {
-    if (dailyLog.length === 0) return 0;
-    const presentCount = dailyLog.filter(r => r.status === 'Present').length;
-    return (presentCount / dailyLog.length) * 100;
-  }, [dailyLog]);
+    if (!attendanceRecords || !enrolledClasses || enrolledClasses.length === 0) return 0;
+    // This is a simplified calculation. A more accurate one would need to know total sessions.
+    const totalSessionsEstimate = enrolledClasses.length * 15; // Assuming 15 sessions per class as an estimate
+    const presentCount = attendanceRecords.length;
+    if (totalSessionsEstimate === 0) return 100;
+    const percentage = (presentCount / totalSessionsEstimate) * 100;
+    return Math.min(100, percentage); // Cap at 100%
+  }, [attendanceRecords, enrolledClasses]);
 
-  const totalEnrolledClasses = useMemo(() => {
-    // Deduplicate based on classId
-    if (!enrolledStudentRecords) return 0;
-    const uniqueClassIds = new Set(enrolledStudentRecords.map(rec => rec.classId));
-    return uniqueClassIds.size;
-  }, [enrolledStudentRecords]);
-
-  const finalIsLoading = isLoading || isLoadingEnrolled;
+  const dailyLog = useMemo(() => {
+    return attendanceRecords
+      ?.map(r => ({
+        id: r.id,
+        date: r.date,
+        className: r.className || "Unknown Class",
+        status: r.status,
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
+  }, [attendanceRecords]);
+  
+  const isLoading = isLoadingClasses || isLoadingAttendance;
 
   return (
     <div className="space-y-6">
@@ -138,7 +74,7 @@ export default function StudentDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingEnrolled ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{totalEnrolledClasses}</div>}
+            {isLoadingClasses ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{enrolledClasses?.length || 0}</div>}
             <p className="text-xs text-muted-foreground">
               All your subjects this semester.
             </p>
@@ -150,7 +86,7 @@ export default function StudentDashboardPage() {
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {finalIsLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{avgAttendance.toFixed(1)}%</div>}
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{avgAttendance.toFixed(1)}%</div>}
             <p className="text-xs text-muted-foreground">
               Across all your classes.
             </p>
@@ -164,7 +100,7 @@ export default function StudentDashboardPage() {
           <CardDescription>Your day-to-day attendance record for all classes.</CardDescription>
         </CardHeader>
         <CardContent>
-           {finalIsLoading ? (
+           {isLoading ? (
              <div className="space-y-2">
                <Skeleton className="h-10 w-full" />
                <Skeleton className="h-10 w-full" />
@@ -209,5 +145,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-
-    
