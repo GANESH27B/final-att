@@ -188,66 +188,57 @@ export default function AttendancePage() {
   };
   
   useEffect(() => {
-    if (!sessionActive) {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => {
-          scannerRef.current = null;
-        }).catch(err => {
-          console.error("Failed to stop the scanner on session end:", err);
-        });
-      }
-      return;
-    }
-
     let isComponentMounted = true;
     
-    const initializeScanner = async () => {
-        try {
-            await navigator.mediaDevices.getUserMedia({ video: true });
-            if (isComponentMounted) setHasCameraPermission(true);
-        } catch (err) {
-            console.error('Camera permission error:', err);
-            if (isComponentMounted) setHasCameraPermission(false);
-            toast({
-                variant: 'destructive',
-                title: 'Camera Access Denied',
-                description: 'Please allow camera access in your browser settings to use this feature.',
-            });
-            return; // Stop if no permission
-        }
-      
-        if (!isComponentMounted || scannerRef.current) return;
-      
-        const scanner = new Html5Qrcode('reader', {
-            verbose: false,
-            formatsToSupport: scannerConfig.supportedScanTypes,
-        });
-        scannerRef.current = scanner;
+    if (sessionActive) {
+      const initializeScanner = async () => {
+          try {
+              await navigator.mediaDevices.getUserMedia({ video: true });
+              if (isComponentMounted) setHasCameraPermission(true);
+          } catch (err) {
+              console.error('Camera permission error:', err);
+              if (isComponentMounted) setHasCameraPermission(false);
+              toast({
+                  variant: 'destructive',
+                  title: 'Camera Access Denied',
+                  description: 'Please allow camera access in your browser settings to use this feature.',
+              });
+              return; // Stop if no permission
+          }
+        
+          if (!isComponentMounted || scannerRef.current) return;
+        
+          const scanner = new Html5Qrcode('reader', {
+              verbose: false,
+              formatsToSupport: scannerConfig.supportedScanTypes,
+          });
+          scannerRef.current = scanner;
 
-        scanner.start(
-            { facingMode: 'environment' },
-            scannerConfig,
-            (decodedText) => {
-                markAttendance(decodedText);
-                if (scannerRef.current?.isScanning) {
-                    try {
-                        scannerRef.current.pause(true);
-                        setTimeout(() => scannerRef.current?.resume(), 1500);
-                    } catch (e) {
-                        console.warn("Could not pause/resume scanner", e);
-                    }
-                }
-            },
-            () => { /* ignore errors */ }
-        ).catch((err) => {
-            console.error('Scanner start error:', err);
-            if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
-                if (isComponentMounted) setHasCameraPermission(false);
-            }
-        });
-    };
+          scanner.start(
+              { facingMode: 'environment' },
+              scannerConfig,
+              (decodedText) => {
+                  markAttendance(decodedText);
+                  if (scannerRef.current?.isScanning) {
+                      try {
+                          scannerRef.current.pause(true);
+                          setTimeout(() => scannerRef.current?.resume(), 1500);
+                      } catch (e) {
+                          console.warn("Could not pause/resume scanner", e);
+                      }
+                  }
+              },
+              () => { /* ignore errors */ }
+          ).catch((err) => {
+              console.error('Scanner start error:', err);
+              if (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError')) {
+                  if (isComponentMounted) setHasCameraPermission(false);
+              }
+          });
+      };
 
-    initializeScanner();
+      initializeScanner();
+    }
 
     // Cleanup function
     return () => {
