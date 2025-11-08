@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen, Percent, User as UserIcon, CheckCircle, XCircle } from "lucide-react";
+import { BookOpen, Percent, User as UserIcon } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase";
 import { collection, collectionGroup, query, where, doc } from "firebase/firestore";
 import { AttendanceRecord, User, Class } from "@/lib/types";
@@ -105,7 +105,7 @@ export default function StudentDashboardPage() {
 
   // Query for all class enrollments
   const enrolledClassesQuery = useMemoFirebase(() =>
-    firestore && user ? query(collectionGroup(firestore, 'students'), where('id', '==', user.uid)) : null,
+    firestore && user ? query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid)) : null,
     [firestore, user]
   );
   const { data: enrolledClasses, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledClassesQuery);

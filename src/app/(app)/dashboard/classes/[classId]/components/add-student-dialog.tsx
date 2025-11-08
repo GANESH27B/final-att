@@ -59,6 +59,7 @@ export function AddStudentDialog({ allStudents, classId }: AddStudentDialogProps
     const studentData = {
       ...studentToEnroll,
       classId: classId, // Add classId to the student document in the subcollection
+      studentId: selectedStudentId, // Explicitly add studentId for querying
     };
     
     const studentDocRef = doc(firestore, 'classes', classId, 'students', selectedStudentId);
