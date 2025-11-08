@@ -264,7 +264,7 @@ export default function AttendancePage() {
         scannerRef.current = null;
       }
     };
-  }, [sessionActive, useScanner, markAttendance, scannerState, toast]);
+  }, [sessionActive, useScanner, markAttendance, scannerState]);
 
 
   const handleSubmitManual = () => {
@@ -474,5 +474,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
