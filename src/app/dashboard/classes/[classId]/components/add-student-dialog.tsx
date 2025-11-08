@@ -31,7 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2 } from 'lucide-react';
 import { useFirestore } from '@/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { User } from '@/lib/types';
 import { errorEmitter, FirestorePermissionError } from '@/firebase';
@@ -77,9 +77,16 @@ export function AddStudentDialog({ allStudents, classId }: AddStudentDialogProps
       const studentDataForClass = {
         ...studentToEnroll,
         classId: classId,
-        studentId: studentToEnroll.id // Add studentId for querying
+        studentId: studentToEnroll.id
       };
       batch.set(studentInClassRef, studentDataForClass);
+
+      // Add studentId to the `studentIds` array on the main class document
+      const classRef = doc(firestore, `classes/${classId}`);
+      batch.update(classRef, {
+        studentIds: arrayUnion(studentToEnroll.id)
+      });
+
 
       await batch.commit();
 

@@ -81,6 +81,7 @@ export function AddClassDialog({ faculty }: AddClassDialogProps) {
       // Data for the new class document in /classes
       const newClassData = {
         ...values,
+        studentIds: [], // Initialize with an empty array of student IDs
         createdAt: serverTimestamp(),
       };
       await addDoc(classesCollectionRef, newClassData);

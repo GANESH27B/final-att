@@ -17,6 +17,7 @@ export type Class = {
   name: string;
   facultyId: string;
   section: string;
+  studentIds: string[]; // Array of student UIDs enrolled in the class
 };
 
 export type AttendanceRecord = {
