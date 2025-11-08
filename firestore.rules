@@ -128,8 +128,8 @@ service cloud.firestore {
         // A student can query their own attendance records across all classes.
         // A faculty can query attendance records for their own classes.
         // An admin can query all attendance records.
-        allow list: if (isStudent() && request.query.where.get('studentId')[2] == request.auth.uid) ||
-                       (isFaculty() && request.query.where.get('facultyId')[2] == request.auth.uid) ||
+        allow list: if (isStudent() && request.query.where[0][0] == 'studentId' && request.query.where[0][2] == request.auth.uid) ||
+                       (isFaculty() && request.query.where[0][0] == 'facultyId' && request.query.where[0][2] == request.auth.uid) ||
                        isAdmin();
         
         // Individual doc reads must still be protected by ownership.
@@ -139,5 +139,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

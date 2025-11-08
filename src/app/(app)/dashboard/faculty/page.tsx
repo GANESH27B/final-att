@@ -1,4 +1,3 @@
-
 "use client"
 import {
   Card,
@@ -51,6 +50,12 @@ export default function FacultyDashboardPage() {
             };
         }
         const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
+        
+        // To calculate average, we need to know the total number of sessions, not just records.
+        // A simple way is to count unique dates per class.
+        const totalSessions = new Set(attendanceRecords.map(r => `${r.classId}-${r.date}`)).size;
+        
+        // A better average would be based on students enrolled vs present, but for a quick metric:
         const avgAttendance = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
         
         return {
@@ -81,6 +86,7 @@ export default function FacultyDashboardPage() {
 
         attendanceRecords.forEach(record => {
             try {
+                // Assuming record.date is "YYYY-MM-DD"
                 const month = format(parseISO(record.date), 'MMM');
                 if (!attendanceByMonth[month]) {
                     attendanceByMonth[month] = { present: 0, total: 0 };
@@ -208,5 +214,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
