@@ -10,20 +10,26 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { collectionGroup, query, where } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
 import { useMemo } from "react";
 import Link from "next/link";
 import { Users } from "lucide-react";
 
-function ClassCard({ cls }: { cls: Class; }) {
+function ClassCard({ cls }: { cls: Class & { id: string } }) {
     const firestore = useFirestore();
     const enrolledStudentsCollectionRef = useMemoFirebase(() => 
-        (firestore ? collection(firestore, `classes/${cls.id}/students`) : null), 
-        [firestore, cls.id]
+        (firestore ? collectionGroup(firestore, 'students') : null), 
+        [firestore]
     );
+
     const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<UserType>(enrolledStudentsCollectionRef);
+
+    const classStudentCount = useMemo(() => {
+        if (!enrolledStudents) return 0;
+        return enrolledStudents.filter(student => student.classId === cls.id).length;
+    }, [enrolledStudents, cls.id]);
 
     return (
         <Card className="flex flex-col h-full hover:bg-muted/50 transition-colors">
@@ -37,7 +43,7 @@ function ClassCard({ cls }: { cls: Class; }) {
                     {isLoadingEnrolled ? (
                         <Skeleton className="h-4 w-16" />
                     ) : (
-                        <span>{enrolledStudents?.length || 0} Student{enrolledStudents?.length !== 1 ? 's' : ''}</span>
+                        <span>{classStudentCount} Student{classStudentCount !== 1 ? 's' : ''}</span>
                     )}
                 </div>
             </CardContent>
@@ -70,17 +76,23 @@ export default function MyClassesPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  const studentAttendanceQuery = useMemoFirebase(() => 
-    firestore && currentUser ? collection(firestore, `users/${currentUser.uid}/attendance`) : null,
-    [firestore, currentUser]
-  );
-  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection(studentAttendanceQuery);
-  
+  // Query the 'students' collection group to find all student documents matching the current user's ID.
+  const studentEnrollmentsQuery = useMemoFirebase(() => {
+    if (!firestore || !currentUser) return null;
+    return query(collectionGroup(firestore, 'students'), where('id', '==', currentUser.uid));
+  }, [firestore, currentUser]);
+
+  // This hook now returns documents from the 'students' subcollections where the student is enrolled.
+  const { data: studentEnrollmentDocs, isLoading: isLoadingEnrollments } = useCollection<UserType>(studentEnrollmentsQuery);
+
+  // From the enrollment documents, extract the unique class IDs.
   const enrolledClassIds = useMemo(() => {
-    if (!attendanceRecords) return [];
-    return [...new Set(attendanceRecords.map(r => r.classId))];
-  }, [attendanceRecords]);
+    if (!studentEnrollmentDocs) return [];
+    // The classId is denormalized on the student document within the class subcollection.
+    return [...new Set(studentEnrollmentDocs.map(doc => doc.classId).filter(Boolean) as string[])];
+  }, [studentEnrollmentDocs]);
   
+  // Now, fetch the actual class documents using the extracted class IDs.
   const classesQuery = useMemoFirebase(() => {
     if (!firestore || enrolledClassIds.length === 0) return null;
     return query(collection(firestore, 'classes'), where('__name__', 'in', enrolledClassIds));
@@ -88,7 +100,7 @@ export default function MyClassesPage() {
 
   const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
   
-  const isLoading = isLoadingAttendance || isLoadingClasses;
+  const isLoading = isLoadingEnrollments || (enrolledClassIds.length > 0 && isLoadingClasses);
 
   return (
     <div className="space-y-4">
