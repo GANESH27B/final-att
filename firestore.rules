@@ -10,12 +10,13 @@
  * - /classes/{classId}: Root collection for all classes, allowing easier querying.
  * - /classes/{classId}/students/{studentId}: Students enrolled in a class. Includes denormalized class data.
  * - /classes/{classId}/attendance/{attendanceId}: Attendance records for a class.
+ * - /users/{studentId}/attendance/{attendanceId}: Mirrored attendance record for student-specific queries.
  *
  * Key Security Decisions:
  * - Admin role is determined by the existence of a document in /roles_admin/{uid}.
  * - Faculty can only manage classes under their own /users/{facultyId} path.
- * - Root-level '/classes' allows admins to list all classes and students to find their classes (with proper queries).
  * - Students can only be added or managed within a class by the owning faculty member.
+ * - Faculty can write attendance records for their own classes into both the class's attendance subcollection and the student's attendance subcollection.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -89,6 +90,12 @@ service cloud.firestore {
     // Faculty can manage the classes listed under their own profile. This enforces ownership.
     match /users/{facultyId}/classes/{classId} {
       allow read, list, create, update, delete: if isOwner(facultyId) || isAdmin();
+    }
+
+    // A student can read their own attendance records. A faculty member can write an attendance record if they own the class.
+    match /users/{userId}/attendance/{attendanceId} {
+      allow read, list: if isOwner(userId);
+      allow write: if isClassOwner(request.resource.data.classId);
     }
 
     // Rules for the root /classes collection
