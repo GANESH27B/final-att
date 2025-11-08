@@ -168,17 +168,7 @@ export default function StudentDashboardPage() {
     <div className="space-y-4">
         <h1 className="text-2xl font-bold tracking-tight font-headline">Student Dashboard</h1>
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Lowest Attendance</CardDescription>
-            <CardTitle className="text-4xl">{overallStats.lowestAttendanceSubject.percentage}%</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-                in {overallStats.lowestAttendanceSubject.subject}
-            </div>
-          </CardContent>
-        </Card>
+        
       </div>
 
     </div>
