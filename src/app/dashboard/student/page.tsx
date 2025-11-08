@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 import { AttendanceRecord, Class } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
