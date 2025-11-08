@@ -132,17 +132,23 @@ export default function FacultyDashboardPage() {
         return { name: cls.name, attendance: 0 };
       }
       
-      const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
+      const sessions = new Map<string, {present: number, total: number}>();
       
-      // Get the number of unique dates (sessions) for this class
-      const totalSessions = new Set(relevantAttendance.map(a => a.date)).size;
+      relevantAttendance.forEach(record => {
+        if (!sessions.has(record.date)) {
+          sessions.set(record.date, { present: 0, total: 0 });
+        }
+        const session = sessions.get(record.date)!;
+        session.total++;
+        if (record.status === 'Present') {
+          session.present++;
+        }
+      });
+      
+      if (sessions.size === 0) return { name: cls.name, attendance: 0 };
 
-      if (totalSessions === 0) {
-        return { name: cls.name, attendance: 0 };
-      }
-
-      // Avg attendance per session for this class
-      const avg = (presentCount / totalSessions) * 100 / (relevantAttendance.length/totalSessions);
+      const sessionAverages = Array.from(sessions.values()).map(s => (s.present / s.total) * 100);
+      const avg = sessionAverages.reduce((a, b) => a + b, 0) / sessionAverages.length;
 
       return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
     });
@@ -151,35 +157,53 @@ export default function FacultyDashboardPage() {
   const overallAttendanceData = useMemo(() => {
     if (!attendanceRecords || attendanceRecords.length === 0) return [];
 
-    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
-
+    // Group all attendance records by month
+    const monthlyData: { [key: string]: AttendanceRecord[] } = {};
     attendanceRecords.forEach(record => {
-        try {
-            const month = format(parseISO(record.date), 'MMM');
-            if (!attendanceByMonth[month]) {
-                attendanceByMonth[month] = { present: 0, total: 0 };
-            }
-            attendanceByMonth[month].total++;
-            if (record.status === 'Present') {
-                attendanceByMonth[month].present++;
-            }
-        } catch (e) {
-            // Ignore invalid date formats
+      try {
+        const month = format(parseISO(record.date), 'MMM');
+        if (!monthlyData[month]) {
+          monthlyData[month] = [];
         }
+        monthlyData[month].push(record);
+      } catch (e) { /* Ignore invalid date formats */ }
     });
 
     const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+    // Calculate the average attendance for each month
     return monthOrder
-        .filter(month => attendanceByMonth[month])
-        .map(month => {
-            const { present, total } = attendanceByMonth[month];
-            return {
-                date: month,
-                attendance: parseFloat(((present / total) * 100).toFixed(1)),
-            };
+      .filter(month => monthlyData[month])
+      .map(month => {
+        const monthRecords = monthlyData[month];
+        
+        // Group records by specific class session (classId + date)
+        const sessions = new Map<string, { present: number; total: number }>();
+        monthRecords.forEach(record => {
+          const sessionId = `${record.classId}-${record.date}`;
+          if (!sessions.has(sessionId)) {
+            sessions.set(sessionId, { present: 0, total: 0 });
+          }
+          const session = sessions.get(sessionId)!;
+          session.total++;
+          if (record.status === 'Present') {
+            session.present++;
+          }
         });
 
+        if (sessions.size === 0) {
+          return { date: month, attendance: 0 };
+        }
+
+        // Calculate the percentage for each session and average them
+        const sessionPercentages = Array.from(sessions.values()).map(s => (s.present / s.total) * 100);
+        const monthlyAverage = sessionPercentages.reduce((acc, p) => acc + p, 0) / sessionPercentages.length;
+
+        return {
+          date: month,
+          attendance: parseFloat(monthlyAverage.toFixed(1)),
+        };
+      });
   }, [attendanceRecords]);
 
 
