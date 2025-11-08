@@ -48,7 +48,6 @@ const facultyNav = [
 
 const studentNav = [
     { href: "/dashboard/student", icon: Home, label: "Dashboard" },
-    { href: "/dashboard/my-attendance", icon: BarChart2, label: "My Attendance" },
 ];
 
 const commonNav = [
