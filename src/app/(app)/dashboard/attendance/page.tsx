@@ -124,12 +124,15 @@ export default function AttendancePage() {
         if (status === 'Absent') {
             batch.delete(classAttendanceDocRef);
             batch.delete(studentAttendanceDocRef);
-            await batch.commit();
-            toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
         } else {
             batch.set(classAttendanceDocRef, attendanceData);
             batch.set(studentAttendanceDocRef, attendanceData);
-            await batch.commit();
+        }
+        await batch.commit();
+
+        if (status === 'Absent') {
+            toast({ title: "Marked Absent", description: `${student.name} marked as absent.` });
+        } else {
             toast({ title: "Marked Present", description: `${student.name} marked as present.`, className: "bg-green-100 dark:bg-green-900 border-green-500"});
         }
     } catch (error: any) {
@@ -184,35 +187,32 @@ export default function AttendancePage() {
     })
   };
   
- useEffect(() => {
-    let isComponentMounted = true;
+  useEffect(() => {
     const readerElementId = 'reader';
 
-    const setupScanner = async () => {
-        if (!sessionActive || !document.getElementById(readerElementId)) {
-            return;
-        }
+    if (sessionActive) {
+      let isComponentMounted = true;
 
+      const setupScanner = async () => {
+        if (!document.getElementById(readerElementId)) return;
+
+        // Check for camera permission
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            if (isComponentMounted) {
-                setHasCameraPermission(true);
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                }
-            }
+            await navigator.mediaDevices.getUserMedia({ video: true });
+            if (isComponentMounted) setHasCameraPermission(true);
         } catch (err) {
             if (isComponentMounted) {
                 setHasCameraPermission(false);
                 toast({
                     variant: 'destructive',
                     title: 'Camera Access Denied',
-                    description: 'Please enable camera access in your browser settings to use the scanner.',
+                    description: 'Please enable camera access in your browser settings.',
                 });
             }
             return;
         }
 
+        // Initialize and start the scanner
         if (isComponentMounted && !scannerRef.current) {
             const scanner = new Html5Qrcode(readerElementId, {
                 verbose: false,
@@ -229,40 +229,41 @@ export default function AttendancePage() {
                         try {
                             scannerRef.current.pause(true);
                             setTimeout(() => scannerRef.current?.resume(), 1500);
-                        } catch (e) {
-                            // Ignore pause/resume errors, they are not critical
-                        }
+                        } catch (e) { /* Ignore pause/resume errors */ }
                     }
                 },
                 (errorMessage) => { /* ignore scan errors */ }
-            ).catch((err) => {
-                if (isComponentMounted) {
-                    setHasCameraPermission(false);
-                }
+            ).catch(() => {
+                if (isComponentMounted) setHasCameraPermission(false);
             });
         }
-    };
+      };
 
-    setupScanner();
+      setupScanner();
 
-    return () => {
+      return () => {
         isComponentMounted = false;
         if (scannerRef.current) {
-            if (scannerRef.current.isScanning) {
-                scannerRef.current.stop().catch(() => {
-                    // This can fail if the scanner is already stopping, which is fine.
-                });
-            }
-            scannerRef.current.clear();
-            scannerRef.current = null;
+          if (scannerRef.current.isScanning) {
+            scannerRef.current.stop().catch(() => {
+                // Ignore errors on stop, it might already be stopping.
+            });
+          }
+          scannerRef.current.clear();
+          scannerRef.current = null;
         }
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
+      };
+    } else {
+        // Cleanup when session becomes inactive
+        if (scannerRef.current) {
+             if (scannerRef.current.isScanning) {
+                scannerRef.current.stop().catch(() => {});
+             }
+             scannerRef.current.clear();
+             scannerRef.current = null;
         }
-    };
-}, [sessionActive, markAttendance, toast]);
+    }
+  }, [sessionActive, markAttendance, toast]);
 
 
   const resetSession = () => {
@@ -321,7 +322,6 @@ export default function AttendancePage() {
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
                 <div id="reader" className="w-full h-full" />
-                 <video ref={videoRef} className="w-full h-full absolute top-0 left-0 object-cover -z-10" autoPlay playsInline muted />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
