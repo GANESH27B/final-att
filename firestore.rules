@@ -35,6 +35,13 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
+    
+    /**
+     * @description Checks if the requesting user is a faculty member with the given facultyId.
+     */
+    function isFacultyOwner(facultyId) {
+      return isSignedIn() && request.auth.uid == facultyId;
+    }
 
     /**
      * @description Checks if the user has the admin role.
@@ -89,14 +96,15 @@ service cloud.firestore {
     
     // Faculty can manage the classes listed under their own profile. This enforces ownership.
     match /users/{facultyId}/classes/{classId} {
-      allow read, list, create, update, delete: if isOwner(facultyId) || isAdmin();
+      allow read, list, create, update, delete: if isFacultyOwner(facultyId) || isAdmin();
     }
 
     // A student can read their own attendance records. A faculty member can write an attendance record if they own the class.
     match /users/{userId}/attendance/{attendanceId} {
       allow read, list: if isOwner(userId);
-      // Allow write if the requester is the owner of the class the attendance record belongs to.
-      allow write: if isClassOwner(request.resource.data.classId);
+      // Allow faculty to write to a student's attendance record only if they are the owner of the class associated with the record.
+      // This relies on the facultyId being correctly set on the incoming attendance record.
+      allow write: if isFaculty() && request.resource.data.facultyId == request.auth.uid;
     }
 
     // Rules for the root /classes collection
@@ -108,7 +116,7 @@ service cloud.firestore {
         allow list: if isAdmin() || isFaculty();
         
         // Write: Only Admins or the assigned faculty can create/update/delete.
-        allow create, update, delete: if isAdmin() || isClassOwner(classId);
+        allow write: if isAdmin() || isFacultyOwner(resource.data.facultyId);
     }
     
     // Rules for managing students within a class
@@ -128,7 +136,7 @@ service cloud.firestore {
 
       // Write: Only the class owner (faculty) or an admin can create/modify attendance.
       // We also check for data consistency.
-      allow write: if (isAdmin() || isClassOwner(classId)) && request.resource.data.classId == classId && request.resource.data.facultyId == get(/databases/$(database)/documents/classes/$(classId)).data.facultyId;
+      allow write: if (isAdmin() || isFacultyOwner(request.resource.data.facultyId)) && request.resource.data.classId == classId;
     }
 
     // Collection group queries for attendance.

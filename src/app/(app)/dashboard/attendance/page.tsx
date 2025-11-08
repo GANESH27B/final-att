@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import {
@@ -117,7 +115,7 @@ export default function AttendancePage() {
         studentName: student.name,
         classId: selectedClassId,
         className: selectedClass?.name || "Unknown Class",
-        facultyId: currentUser.uid,
+        facultyId: currentUser.uid, // Ensure facultyId is included
         date: sessionDate,
         status: "Present",
         timestamp: serverTimestamp(),
@@ -138,7 +136,7 @@ export default function AttendancePage() {
         }
     } catch (error: any) {
         if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write', requestResourceData: { classId: selectedClassId } });
+          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write', requestResourceData: attendanceData });
           errorEmitter.emit('permission-error', permissionError);
         } else {
             toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
@@ -186,27 +184,41 @@ export default function AttendancePage() {
   
   useEffect(() => {
     if (!sessionActive) {
+      if (scannerRef.current) {
+        if (scannerRef.current.isScanning) {
+          scannerRef.current.stop().catch(err => console.warn("Failed to stop scanner on session end:", err));
+        }
+        scannerRef.current.clear();
+        scannerRef.current = null;
+      }
       return;
     }
-
+  
     let isComponentMounted = true;
     const readerElementId = 'reader';
-
+  
     const initializeScanner = async () => {
+      // Ensure the reader element is in the DOM
+      if (!document.getElementById(readerElementId)) {
+        return;
+      }
+  
       try {
         await navigator.mediaDevices.getUserMedia({ video: true });
         if (isComponentMounted) setHasCameraPermission(true);
       } catch (err) {
         console.error('Camera permission error:', err);
-        if (isComponentMounted) setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Camera Access Denied',
-          description: 'Please allow camera access in your browser settings to use this feature.',
-        });
+        if (isComponentMounted) {
+          setHasCameraPermission(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please allow camera access in your browser settings to use this feature.',
+          });
+        }
         return;
       }
-
+  
       if (!isComponentMounted || scannerRef.current) return;
       
       const scanner = new Html5Qrcode(readerElementId, {
@@ -214,7 +226,7 @@ export default function AttendancePage() {
         formatsToSupport: scannerConfig.supportedScanTypes,
       });
       scannerRef.current = scanner;
-
+  
       scanner.start(
         { facingMode: 'environment' },
         scannerConfig,
@@ -225,11 +237,12 @@ export default function AttendancePage() {
               scannerRef.current.pause(true);
               setTimeout(() => scannerRef.current?.resume(), 1500);
             } catch (e) {
+              // This can happen if the scanner is already paused/stopped.
               console.warn("Could not pause/resume scanner", e);
             }
           }
         },
-        () => { /* ignore errors */ }
+        () => { /* ignore errors during scan */ }
       ).catch((err) => {
         console.error('Scanner start error:', err);
         if (isComponentMounted && (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError'))) {
@@ -237,24 +250,23 @@ export default function AttendancePage() {
         }
       });
     };
-
+  
     initializeScanner();
-
-    // Cleanup function
+  
     return () => {
       isComponentMounted = false;
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop()
-          .then(() => {
-            scannerRef.current?.clear();
-            scannerRef.current = null;
-          })
-          .catch((err) => {
-            console.error('Failed to stop scanner on cleanup:', err);
+      if (scannerRef.current) {
+        if (scannerRef.current.isScanning) {
+          scannerRef.current.stop().catch(err => {
+            console.warn("Failed to stop scanner on cleanup:", err);
           });
+        }
+        scannerRef.current.clear();
+        scannerRef.current = null;
       }
     };
   }, [sessionActive, markAttendance, toast]);
+
 
   const resetSession = () => {
     setSelectedClassId(null);
