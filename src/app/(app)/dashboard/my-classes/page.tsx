@@ -14,7 +14,6 @@ import { collection, collectionGroup, documentId, query, where } from "firebase/
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Class, User as UserType } from "@/lib/types";
 import { useMemo } from "react";
-import Link from "next/link";
 import { Users } from "lucide-react";
 
 function ClassCard({ cls }: { cls: Class & { id: string } }) {
@@ -76,19 +75,22 @@ export default function MyClassesPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  // Query the 'students' collection group to find all enrollment documents for the current user.
+  // This query finds all the "student" documents in the collection group `students` where the
+  // document ID matches the current user's UID. This effectively finds all enrollment records for the user.
   const studentEnrollmentsQuery = useMemoFirebase(() => {
     if (!firestore || !currentUser) return null;
-    return query(collectionGroup(firestore, 'students'), where('id', '==', currentUser.uid));
+    return query(collectionGroup(firestore, 'students'), where(documentId(), '==', currentUser.uid));
   }, [firestore, currentUser]);
 
   const { data: studentEnrollmentDocs, isLoading: isLoadingEnrollments } = useCollection<UserType>(studentEnrollmentsQuery);
 
+  // Extract the unique `classId` from each enrollment document.
   const enrolledClassIds = useMemo(() => {
     if (!studentEnrollmentDocs) return [];
     return [...new Set(studentEnrollmentDocs.map(doc => doc.classId).filter(Boolean) as string[])];
   }, [studentEnrollmentDocs]);
   
+  // Now, fetch the full class documents for each `classId` the student is enrolled in.
   const classesQuery = useMemoFirebase(() => {
     if (!firestore || enrolledClassIds.length === 0) return null;
     return query(collection(firestore, 'classes'), where(documentId(), 'in', enrolledClassIds));
@@ -96,7 +98,7 @@ export default function MyClassesPage() {
 
   const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
   
-  const isLoading = isLoadingEnrollments || isLoadingClasses;
+  const isLoading = isLoadingEnrollments || (enrolledClassIds.length > 0 && isLoadingClasses);
 
   return (
     <div className="space-y-4">
