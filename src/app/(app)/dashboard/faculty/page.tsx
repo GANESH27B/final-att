@@ -122,89 +122,6 @@ export default function FacultyDashboardPage() {
     };
   }, [attendanceRecords]);
 
-  // 5. Calculate data for charts
-   const myClassAttendanceData = useMemo(() => {
-    if (!facultyClasses || !attendanceRecords || facultyClasses.length === 0) return [];
-
-    return facultyClasses.map(cls => {
-      const relevantAttendance = attendanceRecords.filter(a => a.classId === cls.id);
-      
-      const sessions = new Map<string, {present: number, total: number}>();
-      
-      relevantAttendance.forEach(record => {
-        if (!sessions.has(record.date)) {
-            // Count total students for this specific session
-            const sessionStudents = new Set(relevantAttendance.filter(r => r.date === record.date).map(r => r.studentId));
-            sessions.set(record.date, { present: 0, total: sessionStudents.size });
-        }
-        const session = sessions.get(record.date)!;
-        if (record.status === 'Present') {
-            session.present++;
-        }
-      });
-      
-      if (sessions.size === 0) return { name: cls.name, attendance: 0 };
-
-      const sessionAverages = Array.from(sessions.values()).map(s => s.total > 0 ? (s.present / s.total) * 100 : 0);
-      const avg = sessionAverages.reduce((a, b) => a + b, 0) / sessionAverages.length;
-
-      return { name: cls.name, attendance: parseFloat(avg.toFixed(1)) };
-    });
-  }, [facultyClasses, attendanceRecords]);
-
-  const overallAttendanceData = useMemo(() => {
-    if (!attendanceRecords || attendanceRecords.length === 0) return [];
-
-    // Group all attendance records by month
-    const monthlyData: { [key: string]: AttendanceRecord[] } = {};
-    attendanceRecords.forEach(record => {
-      try {
-        const month = format(parseISO(record.date), 'MMM');
-        if (!monthlyData[month]) {
-          monthlyData[month] = [];
-        }
-        monthlyData[month].push(record);
-      } catch (e) { /* Ignore invalid date formats */ }
-    });
-
-    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    // Calculate the average attendance for each month
-    return monthOrder
-      .filter(month => monthlyData[month])
-      .map(month => {
-        const monthRecords = monthlyData[month];
-        
-        // Group records by specific class session (classId + date)
-        const sessions = new Map<string, { present: number; total: number }>();
-        monthRecords.forEach(record => {
-          const sessionId = `${record.classId}-${record.date}`;
-          if (!sessions.has(sessionId)) {
-            // Count total students for this specific session
-            const sessionStudents = new Set(monthRecords.filter(r => r.classId === record.classId && r.date === record.date).map(r => r.studentId));
-            sessions.set(sessionId, { present: 0, total: sessionStudents.size });
-          }
-          const session = sessions.get(sessionId)!;
-          if (record.status === 'Present') {
-            session.present++;
-          }
-        });
-
-        if (sessions.size === 0) {
-          return { date: month, attendance: 0 };
-        }
-
-        // Calculate the percentage for each session and average them
-        const sessionPercentages = Array.from(sessions.values()).map(s => s.total > 0 ? (s.present / s.total) * 100 : 0);
-        const monthlyAverage = sessionPercentages.reduce((acc, p) => acc + p, 0) / sessionPercentages.length;
-
-        return {
-          date: month,
-          attendance: parseFloat(monthlyAverage.toFixed(1)),
-        };
-      });
-  }, [attendanceRecords]);
-
 
   const isLoading = isLoadingClasses || isLoadingAttendance || isLoadingStudents;
 
@@ -241,33 +158,6 @@ export default function FacultyDashboardPage() {
             {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{stats.avgAttendance.toFixed(1)}%</div>}
             <p className="text-xs text-muted-foreground">Across all your classes</p>
           </CardContent>
-        </Card>
-      </div>
-      <div className="grid gap-4 grid-cols-1">
-        <Card>
-            <CardHeader>
-                <CardTitle>Overall Attendance Trend</CardTitle>
-                <CardDescription>Your students' monthly attendance trend.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? <Skeleton className="h-[250px] w-full" /> : (
-                    overallAttendanceData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                            <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid vertical={false} />
-                                <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                                <YAxis domain={[0, 100]} />
-                                <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                                <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                            </LineChart>
-                        </ChartContainer>
-                    ) : (
-                         <div className="flex h-[250px] w-full items-center justify-center text-muted-foreground">
-                            No trend data available.
-                        </div>
-                    )
-                )}
-            </CardContent>
         </Card>
       </div>
     </div>
