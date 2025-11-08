@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -16,8 +15,6 @@ import {
   BookOpen,
   ScanLine,
   PieChart,
-  BarChart2,
-  BadgeInfo,
   LogOut,
   Shield,
   User,

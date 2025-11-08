@@ -92,13 +92,17 @@ export default function AdminDashboardPage() {
         const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
 
         attendance.forEach(record => {
-            const month = format(parseISO(record.date), 'MMM');
-            if (!attendanceByMonth[month]) {
-                attendanceByMonth[month] = { present: 0, total: 0 };
-            }
-            attendanceByMonth[month].total++;
-            if (record.status === 'Present') {
-                attendanceByMonth[month].present++;
+            try {
+              const month = format(parseISO(record.date), 'MMM');
+              if (!attendanceByMonth[month]) {
+                  attendanceByMonth[month] = { present: 0, total: 0 };
+              }
+              attendanceByMonth[month].total++;
+              if (record.status === 'Present') {
+                  attendanceByMonth[month].present++;
+              }
+            } catch(e) {
+                // Ignore invalid date formats
             }
         });
 

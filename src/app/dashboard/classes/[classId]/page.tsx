@@ -39,7 +39,7 @@ import { RemoveStudentDialog } from './components/remove-student-dialog';
 
 export default function ManageClassPage({ params }: { params: { classId: string } }) {
   const firestore = useFirestore();
-  const { classId } = params;
+  const classId = params.classId as string;
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);

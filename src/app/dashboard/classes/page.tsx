@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -126,6 +125,7 @@ export default function ClassManagementPage() {
           </p>
         </div>
         {user?.role === 'admin' && <AddClassDialog faculty={faculty || []} />}
+        {user?.role === 'faculty' && <AddClassDialog faculty={[{ id: user.id, name: user.name, email: user.email, role: 'faculty', avatarUrl: user.avatarUrl, status: 'Active' }]} />}
       </div>
 
       {finalIsLoading ? (
@@ -143,7 +143,7 @@ export default function ClassManagementPage() {
           ) : (
             <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md mt-4">
                 <p>No classes found.</p>
-                {user?.role === 'admin' && <p className="text-sm">Click "Add Class" to create the first one.</p>}
+                {(user?.role === 'admin' || user?.role === 'faculty') && <p className="text-sm">Click "Add Class" to create the first one.</p>}
             </div>
           )}
         </>

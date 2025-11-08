@@ -1,4 +1,3 @@
-
 'use client';
 
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -9,13 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { UserRole, User } from "@/lib/types";
+import { User } from "@/lib/types";
 import { doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Loader2 } from "lucide-react";
 
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading: userLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
@@ -38,19 +37,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Wait until Firebase Auth has determined the user's status.
     if (userLoading) {
       setLoading(true);
       return;
     }
 
-    // If auth is ready and there's no user, redirect to login.
     if (!user) {
       router.replace("/login");
       return;
     }
 
-    // If we have a user but haven't fetched their role from Firestore yet.
     if (firestore && user && !userData) {
       const userDocRef = doc(firestore, "users", user.uid);
       getDoc(userDocRef)
@@ -59,7 +55,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             const userRoleData = { id: docSnap.id, ...docSnap.data() } as User;
             setUserData(userRoleData);
           } else {
-             // This might happen if the user doc isn't created yet or was deleted.
              toast({
                 variant: "destructive",
                 title: "User Data Not Found",
@@ -85,19 +80,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             }
         })
         .finally(() => {
-          // This will be set to false regardless of success/fail,
-          // the other checks will handle redirection if needed.
           setLoading(false);
         });
     } else if (userData) {
-        // User and their role data are loaded.
         setLoading(false);
+    } else if (!user && !userLoading) {
+        router.replace('/login');
     }
   }, [user?.uid, userLoading, firestore, router, toast, userData]);
 
-  // This is the main loading gate. It shows a loader if either Firebase Auth is working
-  // or if we are in the process of fetching the user's role from Firestore.
-  // It only proceeds to render children when both are complete and successful.
   if (loading || userLoading || !userData) {
     return (
       <div className="flex h-screen items-center justify-center">
