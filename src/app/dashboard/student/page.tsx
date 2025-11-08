@@ -6,90 +6,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen, Percent, User as UserIcon } from "lucide-react";
-import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase";
-import { collection, collectionGroup, query, where, doc } from "firebase/firestore";
-import { AttendanceRecord, User, Class } from "@/lib/types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { BookOpen, Percent } from "lucide-react";
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { collection, query, where, collectionGroup } from "firebase/firestore";
+import { AttendanceRecord, User } from "@/lib/types";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
-
-// A new component to render each class card
-function ClassAttendanceCard({ classId }: { classId: string }) {
-  const firestore = useFirestore();
-  const { user } = useUser();
-
-  const classRef = useMemoFirebase(() => firestore ? doc(firestore, 'classes', classId) : null, [firestore, classId]);
-  const { data: classData, isLoading: isLoadingClass } = useDoc<Class>(classRef);
-
-  const facultyRef = useMemoFirebase(() => firestore && classData?.facultyId ? doc(firestore, 'users', classData.facultyId) : null, [firestore, classData]);
-  const { data: facultyData, isLoading: isLoadingFaculty } = useDoc<User>(facultyRef);
-
-  // We query attendance scoped to the student and the specific class
-  const attendanceQuery = useMemoFirebase(() => 
-    firestore && user ? query(
-      collection(firestore, `users/${user.uid}/attendance`), 
-      where('classId', '==', classId)
-    ) : null,
-    [firestore, user, classId]
-  );
-  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
-
-  const classAttendancePercentage = useMemo(() => {
-    if (!attendanceRecords || attendanceRecords.length === 0) return 0;
-    const presentCount = attendanceRecords.filter(r => r.status === 'Present').length;
-    return (presentCount / attendanceRecords.length) * 100;
-  }, [attendanceRecords]);
-  
-  const isLoading = isLoadingClass || isLoadingFaculty || isLoadingAttendance;
-
-  if (isLoading) {
-    return <ClassCardSkeleton />;
-  }
-
-  if (!classData) {
-    return null; // Or some fallback UI if a class document is missing
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{classData.name}</CardTitle>
-        <CardDescription className="flex items-center gap-2">
-            <UserIcon className="h-4 w-4" /> 
-            {facultyData?.name || 'Loading faculty...'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-            <Progress value={classAttendancePercentage} className="h-2" />
-            <div className="flex justify-between text-sm text-muted-foreground">
-                <span>{classAttendancePercentage.toFixed(1)}% Attendance</span>
-                <span>{attendanceRecords?.filter(r => r.status === 'Present').length || 0} / {attendanceRecords?.length || 0} classes</span>
-            </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ClassCardSkeleton() {
-    return (
-        <Card>
-            <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-4 w-1/2 mt-2" />
-            </CardHeader>
-            <CardContent>
-                <Skeleton className="h-2 w-full" />
-                <div className="flex justify-between mt-2">
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-4 w-1/4" />
-                </div>
-            </CardContent>
-        </Card>
-    )
-}
+import { format, parseISO } from "date-fns";
 
 export default function StudentDashboardPage() {
   const firestore = useFirestore();
@@ -121,8 +53,12 @@ export default function StudentDashboardPage() {
     return enrolledClasses?.length || 0;
   }, [enrolledClasses]);
 
+  const sortedAttendance = useMemo(() => {
+    if (!allAttendanceRecords) return [];
+    return [...allAttendanceRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [allAttendanceRecords]);
+
   const isLoading = isLoadingAttendance || isLoadingEnrolled;
-  const classIds = useMemo(() => enrolledClasses?.map(c => c.classId).filter((id): id is string => !!id) || [], [enrolledClasses]);
 
   return (
     <div className="space-y-6">
@@ -142,7 +78,7 @@ export default function StudentDashboardPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg. Attendance</CardTitle>
+            <CardTitle className="text-sm font-medium">Overall Attendance</CardTitle>
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -154,26 +90,54 @@ export default function StudentDashboardPage() {
         </Card>
       </div>
 
-        <div>
-            <h2 className="text-xl font-bold tracking-tight font-headline mb-4">My Classes</h2>
-            {isLoading ? (
-                 <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-                    <ClassCardSkeleton />
-                    <ClassCardSkeleton />
-                </div>
-            ) : (
-                classIds.length > 0 ? (
-                    <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-                       {classIds.map(classId => <ClassAttendanceCard key={classId} classId={classId} />)}
-                    </div>
-                ) : (
-                    <Card className="flex flex-col items-center justify-center p-8 text-center">
-                        <CardTitle>No Classes Found</CardTitle>
-                        <CardDescription className="mt-2">You are not enrolled in any classes yet.</CardDescription>
-                    </Card>
-                )
-            )}
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily Attendance Log</CardTitle>
+          <CardDescription>Your day-to-day attendance record for all classes.</CardDescription>
+        </CardHeader>
+        <CardContent>
+           {isLoading ? (
+             <div className="space-y-2">
+               <Skeleton className="h-10 w-full" />
+               <Skeleton className="h-10 w-full" />
+               <Skeleton className="h-10 w-full" />
+             </div>
+           ) : (
+             <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Class</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedAttendance.length > 0 ? (
+                    sortedAttendance.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell className="font-medium">
+                          {format(parseISO(record.date), "MMMM d, yyyy")}
+                        </TableCell>
+                        <TableCell>{record.className || record.classId}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={record.status === 'Present' ? 'secondary' : 'destructive'}>
+                            {record.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={3} className="h-24 text-center">
+                        No attendance records found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+           )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
