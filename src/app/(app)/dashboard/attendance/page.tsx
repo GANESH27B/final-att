@@ -62,21 +62,18 @@ export default function AttendancePage() {
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   
-  // Fetch classes for the current faculty member
   const facultyClassesQuery = useMemoFirebase(() =>
     firestore && currentUser ? query(collection(firestore, 'classes'), where('facultyId', '==', currentUser.uid)) : null,
     [firestore, currentUser]
   );
   const { data: facultyClasses, isLoading: isLoadingClasses } = useCollection<Class>(facultyClassesQuery);
 
-  // Fetch students for the selected class
   const enrolledStudentsQuery = useMemoFirebase(() =>
     firestore && selectedClassId ? collection(firestore, 'classes', selectedClassId, 'students') : null,
     [firestore, selectedClassId]
   );
   const { data: enrolledStudents, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledStudentsQuery);
 
-  // Fetch today's attendance records for the selected class
   const attendanceQuery = useMemoFirebase(() =>
     firestore && selectedClassId && sessionDate ? query(collection(firestore, 'classes', selectedClassId, 'attendance'), where('date', '==', sessionDate)) : null,
     [firestore, selectedClassId, sessionDate]
@@ -115,7 +112,7 @@ export default function AttendancePage() {
         studentName: student.name,
         classId: selectedClassId,
         className: selectedClass?.name || "Unknown Class",
-        facultyId: currentUser.uid, // Ensure facultyId is included
+        facultyId: currentUser.uid,
         date: sessionDate,
         status: "Present",
         timestamp: serverTimestamp(),
@@ -149,7 +146,6 @@ export default function AttendancePage() {
     if (!firestore || !selectedClassId || !sessionActive || !currentUser) return;
 
     let student: User | undefined;
-    // Student ID can come from QR code, or registration number from manual input
     const trimmedIdentifier = studentIdentifier.trim();
     if (studentMap.has(trimmedIdentifier)) {
       student = studentMap.get(trimmedIdentifier);
@@ -183,75 +179,62 @@ export default function AttendancePage() {
   };
   
   useEffect(() => {
-    if (!sessionActive) {
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          scannerRef.current.stop().catch(err => console.warn("Failed to stop scanner on session end:", err));
-        }
-        scannerRef.current.clear();
-        scannerRef.current = null;
-      }
-      return;
-    }
-  
-    let isComponentMounted = true;
     const readerElementId = 'reader';
-  
-    const initializeScanner = async () => {
-      // Ensure the reader element is in the DOM
-      if (!document.getElementById(readerElementId)) {
-        return;
-      }
-  
+    let isComponentMounted = true;
+
+    const startScanner = async () => {
+      if (!document.getElementById(readerElementId)) return;
+      
       try {
         await navigator.mediaDevices.getUserMedia({ video: true });
         if (isComponentMounted) setHasCameraPermission(true);
       } catch (err) {
-        console.error('Camera permission error:', err);
+        console.error("Camera permission denied:", err);
         if (isComponentMounted) {
           setHasCameraPermission(false);
           toast({
             variant: 'destructive',
             title: 'Camera Access Denied',
-            description: 'Please allow camera access in your browser settings to use this feature.',
+            description: 'Please enable camera access in your browser settings to use the scanner.',
           });
         }
         return;
       }
-  
-      if (!isComponentMounted || scannerRef.current) return;
       
-      const scanner = new Html5Qrcode(readerElementId, {
-        verbose: false,
-        formatsToSupport: scannerConfig.supportedScanTypes,
-      });
-      scannerRef.current = scanner;
-  
-      scanner.start(
-        { facingMode: 'environment' },
-        scannerConfig,
-        (decodedText) => {
-          markAttendance(decodedText);
-          if (scannerRef.current?.isScanning) {
-            try {
-              scannerRef.current.pause(true);
-              setTimeout(() => scannerRef.current?.resume(), 1500);
-            } catch (e) {
-              // This can happen if the scanner is already paused/stopped.
-              console.warn("Could not pause/resume scanner", e);
+      if (isComponentMounted && !scannerRef.current) {
+        const scanner = new Html5Qrcode(readerElementId, {
+          verbose: false,
+          formatsToSupport: scannerConfig.supportedScanTypes,
+        });
+        scannerRef.current = scanner;
+
+        scanner.start(
+          { facingMode: 'environment' },
+          scannerConfig,
+          (decodedText) => {
+            markAttendance(decodedText);
+            if (scannerRef.current?.isScanning) {
+              try {
+                scannerRef.current.pause(true);
+                setTimeout(() => scannerRef.current?.resume(), 1500);
+              } catch (e) {
+                console.warn("Could not pause/resume scanner", e);
+              }
             }
+          },
+          (errorMessage) => { /* ignore scan errors */ }
+        ).catch((err) => {
+          if (isComponentMounted) {
+            console.error("Scanner failed to start:", err);
+            setHasCameraPermission(false);
           }
-        },
-        () => { /* ignore errors during scan */ }
-      ).catch((err) => {
-        console.error('Scanner start error:', err);
-        if (isComponentMounted && (String(err).includes('NotAllowedError') || String(err).includes('NotFoundError'))) {
-          setHasCameraPermission(false);
-        }
-      });
+        });
+      }
     };
-  
-    initializeScanner();
+
+    if (sessionActive) {
+      startScanner();
+    }
   
     return () => {
       isComponentMounted = false;
