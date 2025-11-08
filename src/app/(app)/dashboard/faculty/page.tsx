@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -104,61 +105,103 @@ export default function FacultyDashboardPage() {
 
   const classAttendanceData = useMemo(() => {
     if (!facultyClasses || !allAttendance || facultyClasses.length === 0) return [];
-    
-    const classAttendance = facultyClasses.map(cls => {
-        const relevantAttendance = allAttendance.filter(a => a.classId === cls.id);
-        if (relevantAttendance.length === 0) {
-            return { name: cls.name, attendance: 0 };
+  
+    const classAttendance = facultyClasses.map((cls, index) => {
+      const relevantAttendance = allAttendance.filter(a => a.classId === cls.id);
+      if (relevantAttendance.length === 0) {
+        return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
+      }
+  
+      // Group attendance by date to find individual sessions
+      const sessions = relevantAttendance.reduce((acc, record) => {
+        const date = record.date;
+        if (!acc[date]) {
+          acc[date] = { present: 0, total: 0 };
         }
-        const presentCount = relevantAttendance.filter(a => a.status === 'Present').length;
-        const avg = (presentCount / relevantAttendance.length) * 100;
-        return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(facultyClasses.indexOf(cls) % 5) + 1}))` };
+        acc[date].total++;
+        if (record.status === 'Present') {
+          acc[date].present++;
+        }
+        return acc;
+      }, {} as Record<string, { present: number; total: number }>);
+  
+      const sessionPercentages = Object.values(sessions).map(
+        session => (session.present / session.total) * 100
+      );
+  
+      if (sessionPercentages.length === 0) {
+        return { name: cls.name, attendance: 0, fill: `hsl(var(--chart-${(index % 5) + 1}))` };
+      }
+  
+      // Average the percentages of all sessions for the class
+      const totalPercentage = sessionPercentages.reduce((sum, p) => sum + p, 0);
+      const avg = totalPercentage / sessionPercentages.length;
+  
+      return { name: cls.name, attendance: parseFloat(avg.toFixed(1)), fill: `hsl(var(--chart-${(index % 5) + 1}))` };
     });
-
+  
     // Update chartConfig dynamically
-    facultyClasses.forEach((cls, index) => {
+    classAttendance.forEach((cls, index) => {
         const key = cls.name.replace(/\s+/g, '').toLowerCase();
         if (!chartConfig[key as keyof typeof chartConfig]) {
             (chartConfig as any)[key] = { label: cls.name, color: `hsl(var(--chart-${(index % 5) + 1}))` };
         }
     });
-
-    return classAttendance.sort((a,b) => b.attendance - a.attendance);
-
+  
+    return classAttendance.sort((a, b) => b.attendance - a.attendance);
+  
   }, [facultyClasses, allAttendance]);
 
   const overallAttendanceData = useMemo(() => {
     if (!allAttendance || allAttendance.length === 0) return [];
-
-    const attendanceByMonth: { [key: string]: { present: number, total: number } } = {};
-
-    allAttendance.forEach(record => {
-        try {
-            const month = format(parseISO(record.date), 'MMM');
-            if (!attendanceByMonth[month]) {
-                attendanceByMonth[month] = { present: 0, total: 0 };
-            }
-            attendanceByMonth[month].total++;
-            if (record.status === 'Present') {
-                attendanceByMonth[month].present++;
-            }
-        } catch(e) {
-            // Ignore invalid date formats
+  
+    // Group attendance records by month
+    const attendanceByMonth = allAttendance.reduce((acc, record) => {
+      try {
+        const month = format(parseISO(record.date), 'yyyy-MM');
+        if (!acc[month]) {
+          acc[month] = [];
         }
+        acc[month].push(record);
+      } catch (e) {
+        // Ignore invalid dates
+      }
+      return acc;
+    }, {} as Record<string, AttendanceRecord[]>);
+  
+    const monthlyAverages = Object.entries(attendanceByMonth).map(([month, records]) => {
+      // For each month, group records by session (classId + date)
+      const sessions = records.reduce((acc, record) => {
+        const sessionKey = `${record.classId}-${record.date}`;
+        if (!acc[sessionKey]) {
+          acc[sessionKey] = { present: 0, total: 0 };
+        }
+        acc[sessionKey].total++;
+        if (record.status === 'Present') {
+          acc[sessionKey].present++;
+        }
+        return acc;
+      }, {} as Record<string, { present: number, total: number }>);
+  
+      // Calculate percentage for each session
+      const sessionPercentages = Object.values(sessions).map(
+        session => (session.present / session.total) * 100
+      );
+  
+      if (sessionPercentages.length === 0) {
+        return { date: format(parseISO(month + '-01'), 'MMM'), attendance: 0 };
+      }
+  
+      // Average the percentages of all sessions in that month
+      const totalPercentage = sessionPercentages.reduce((sum, p) => sum + p, 0);
+      const avg = totalPercentage / sessionPercentages.length;
+      return { date: format(parseISO(month + '-01'), 'MMM'), attendance: parseFloat(avg.toFixed(1)) };
     });
-
+    
+    // Ensure chronological order
     const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    return monthOrder
-        .filter(month => attendanceByMonth[month])
-        .map(month => {
-            const { present, total } = attendanceByMonth[month];
-            return {
-                date: month,
-                attendance: parseFloat(((present / total) * 100).toFixed(1)),
-            };
-        });
-
+    return monthlyAverages.sort((a,b) => monthOrder.indexOf(a.date) - monthOrder.indexOf(b.date));
+  
   }, [allAttendance]);
 
   const isLoading = isLoadingClasses || isLoadingStudents || isLoadingAttendance;
@@ -202,7 +245,7 @@ export default function FacultyDashboardPage() {
                         <BarChart data={classAttendanceData} accessibilityLayer>
                            <CartesianGrid vertical={false} />
                            <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
-                           <YAxis domain={[0, 100]} />
+                           <YAxis domain={[0, 100]} unit="%" />
                            <Tooltip cursor={false} content={<ChartTooltipContent />} />
                            <Bar dataKey="attendance" radius={8} />
                         </BarChart>
@@ -227,7 +270,7 @@ export default function FacultyDashboardPage() {
                         <LineChart data={overallAttendanceData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                           <CartesianGrid vertical={false} />
                           <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                          <YAxis domain={[0, 100]} />
+                          <YAxis domain={[0, 100]} unit="%" />
                           <Tooltip cursor={false} content={<ChartTooltipContent />} />
                           <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
                         </LineChart>
@@ -244,5 +287,3 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
-
-    
