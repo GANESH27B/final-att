@@ -145,7 +145,7 @@ export default function StudentDashboardPage() {
   if (isLoading) {
     return (
         <div className="space-y-4">
-            <h1 className="text-2xl font-bold tracking-tight font-headline">My Attendance Dashboard</h1>
+            <h1 className="text-2xl font-bold tracking-tight font-headline">Student Dashboard</h1>
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {Array.from({length: 3}).map((_, i) => (
                     <Card key={i}><CardHeader className="pb-2"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-10 w-1/4 mt-1" /></CardHeader><CardContent><Skeleton className="h-3 w-3/4" /></CardContent></Card>
@@ -167,7 +167,7 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight font-headline">My Attendance Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight font-headline">Student Dashboard</h1>
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -204,66 +204,6 @@ export default function StudentDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Subject-wise Attendance</CardTitle>
-            <CardDescription>Detailed attendance record for each subject.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {subjectWiseAttendance.length > 0 ? (
-                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[120px] sm:w-[180px]">Subject</TableHead>
-                      <TableHead>Progress</TableHead>
-                      <TableHead className="text-right">Percentage</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {subjectWiseAttendance.map((subject) => (
-                      <TableRow key={subject.subject}>
-                        <TableCell className="font-medium truncate">{subject.subject}</TableCell>
-                        <TableCell>
-                          <Progress value={subject.percentage} className="h-2" />
-                        </TableCell>
-                        <TableCell className="text-right">{subject.percentage}%</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-            ) : (
-                <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md">
-                    <p>No attendance records found yet.</p>
-                </div>
-            )}
-           
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Progress</CardTitle>
-            <CardDescription>Your attendance trend over the last few months.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {monthlyTrendData.length > 0 ? (
-              <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                  <LineChart data={monthlyTrendData} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} activeDot={{ r: 6 }} />
-                  </LineChart>
-              </ChartContainer>
-            ) : (
-                <div className="text-center text-muted-foreground p-8 border-dashed border-2 rounded-md">
-                    <p>Not enough data for a trend graph.</p>
-                </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
