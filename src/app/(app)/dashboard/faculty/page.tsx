@@ -122,7 +122,7 @@ export default function FacultyDashboardPage() {
   return (
     <div className="space-y-4">
        <h1 className="text-2xl font-bold tracking-tight font-headline">Faculty Dashboard</h1>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">My Classes</CardTitle>
@@ -176,8 +176,8 @@ export default function FacultyDashboardPage() {
                        <YAxis domain={[0, 100]} unit="%" />
                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
                        <Bar dataKey="attendance" radius={8}>
-                         {myClassAttendanceData.map((entry, index) => (
-                           <Bar key={`bar-${index}`} dataKey="attendance" fill={entry.fill} />
+                         {myClassAttendanceData.map((entry) => (
+                           <Bar key={entry.name} dataKey="attendance" fill={entry.fill} />
                          ))}
                        </Bar>
                     </BarChart>
