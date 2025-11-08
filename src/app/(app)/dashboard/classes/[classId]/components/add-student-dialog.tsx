@@ -59,8 +59,8 @@ export function AddStudentDialog({ allStudents, classId }: AddStudentDialogProps
     // Ensure studentId is part of the data for querying
     const studentData = {
       ...studentToEnroll,
-      classId: classId, 
-      studentId: selectedStudentId,
+      classId: classId,
+      studentId: selectedStudentId, // This is the critical field
     };
     
     const studentDocRef = doc(firestore, 'classes', classId, 'students', selectedStudentId);
