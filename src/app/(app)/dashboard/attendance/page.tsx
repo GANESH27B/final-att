@@ -61,6 +61,7 @@ export default function AttendancePage() {
 
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   const facultyClassesQuery = useMemoFirebase(() =>
     firestore && currentUser ? query(collection(firestore, 'classes'), where('facultyId', '==', currentUser.uid)) : null,
@@ -114,7 +115,7 @@ export default function AttendancePage() {
         className: selectedClass?.name || "Unknown Class",
         facultyId: currentUser.uid,
         date: sessionDate,
-        status: "Present",
+        status: status,
         timestamp: serverTimestamp(),
     };
 
@@ -133,7 +134,12 @@ export default function AttendancePage() {
         }
     } catch (error: any) {
         if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({ path: "batch write", operation: 'write', requestResourceData: attendanceData });
+          const path = status === 'Absent' ? `${classAttendanceDocRef.path} & ${studentAttendanceDocRef.path}` : "batch write";
+          const permissionError = new FirestorePermissionError({ 
+            path: path, 
+            operation: status === 'Absent' ? 'delete' : 'write', 
+            requestResourceData: status === 'Present' ? attendanceData : undefined
+          });
           errorEmitter.emit('permission-error', permissionError);
         } else {
             toast({ variant: "destructive", title: "Error", description: "Could not update attendance." });
@@ -178,77 +184,85 @@ export default function AttendancePage() {
     })
   };
   
-  useEffect(() => {
-    const readerElementId = 'reader';
+ useEffect(() => {
     let isComponentMounted = true;
+    const readerElementId = 'reader';
 
-    const startScanner = async () => {
-      if (!document.getElementById(readerElementId)) return;
-      
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        if (isComponentMounted) setHasCameraPermission(true);
-      } catch (err) {
-        console.error("Camera permission denied:", err);
-        if (isComponentMounted) {
-          setHasCameraPermission(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera access in your browser settings to use the scanner.',
-          });
+    const setupScanner = async () => {
+        if (!sessionActive || !document.getElementById(readerElementId)) {
+            return;
         }
-        return;
-      }
-      
-      if (isComponentMounted && !scannerRef.current) {
-        const scanner = new Html5Qrcode(readerElementId, {
-          verbose: false,
-          formatsToSupport: scannerConfig.supportedScanTypes,
-        });
-        scannerRef.current = scanner;
 
-        scanner.start(
-          { facingMode: 'environment' },
-          scannerConfig,
-          (decodedText) => {
-            markAttendance(decodedText);
-            if (scannerRef.current?.isScanning) {
-              try {
-                scannerRef.current.pause(true);
-                setTimeout(() => scannerRef.current?.resume(), 1500);
-              } catch (e) {
-                console.warn("Could not pause/resume scanner", e);
-              }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (isComponentMounted) {
+                setHasCameraPermission(true);
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
             }
-          },
-          (errorMessage) => { /* ignore scan errors */ }
-        ).catch((err) => {
-          if (isComponentMounted) {
-            console.error("Scanner failed to start:", err);
-            setHasCameraPermission(false);
-          }
-        });
-      }
+        } catch (err) {
+            if (isComponentMounted) {
+                setHasCameraPermission(false);
+                toast({
+                    variant: 'destructive',
+                    title: 'Camera Access Denied',
+                    description: 'Please enable camera access in your browser settings to use the scanner.',
+                });
+            }
+            return;
+        }
+
+        if (isComponentMounted && !scannerRef.current) {
+            const scanner = new Html5Qrcode(readerElementId, {
+                verbose: false,
+                formatsToSupport: scannerConfig.supportedScanTypes,
+            });
+            scannerRef.current = scanner;
+
+            scanner.start(
+                { facingMode: 'environment' },
+                scannerConfig,
+                (decodedText) => {
+                    markAttendance(decodedText);
+                    if (scannerRef.current?.isScanning) {
+                        try {
+                            scannerRef.current.pause(true);
+                            setTimeout(() => scannerRef.current?.resume(), 1500);
+                        } catch (e) {
+                            // Ignore pause/resume errors, they are not critical
+                        }
+                    }
+                },
+                (errorMessage) => { /* ignore scan errors */ }
+            ).catch((err) => {
+                if (isComponentMounted) {
+                    setHasCameraPermission(false);
+                }
+            });
+        }
     };
 
-    if (sessionActive) {
-      startScanner();
-    }
-  
+    setupScanner();
+
     return () => {
-      isComponentMounted = false;
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          scannerRef.current.stop().catch(err => {
-            console.warn("Failed to stop scanner on cleanup:", err);
-          });
+        isComponentMounted = false;
+        if (scannerRef.current) {
+            if (scannerRef.current.isScanning) {
+                scannerRef.current.stop().catch(() => {
+                    // This can fail if the scanner is already stopping, which is fine.
+                });
+            }
+            scannerRef.current.clear();
+            scannerRef.current = null;
         }
-        scannerRef.current.clear();
-        scannerRef.current = null;
-      }
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
     };
-  }, [sessionActive, markAttendance, toast]);
+}, [sessionActive, markAttendance, toast]);
 
 
   const resetSession = () => {
@@ -307,6 +321,7 @@ export default function AttendancePage() {
           <CardContent>
             <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
                 <div id="reader" className="w-full h-full" />
+                 <video ref={videoRef} className="w-full h-full absolute top-0 left-0 object-cover -z-10" autoPlay playsInline muted />
                 {!sessionActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                         <QrCode className="h-16 w-16 text-muted-foreground" />
