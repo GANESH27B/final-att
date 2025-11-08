@@ -82,26 +82,21 @@ export default function MyClassesPage() {
     return query(collectionGroup(firestore, 'students'), where('id', '==', currentUser.uid));
   }, [firestore, currentUser]);
 
-  // This hook now returns documents from the 'students' subcollections where the student is enrolled.
   const { data: studentEnrollmentDocs, isLoading: isLoadingEnrollments } = useCollection<UserType>(studentEnrollmentsQuery);
 
-  // From the enrollment documents, extract the unique class IDs.
   const enrolledClassIds = useMemo(() => {
     if (!studentEnrollmentDocs) return [];
-    // The classId is denormalized on the student document within the class subcollection.
     return [...new Set(studentEnrollmentDocs.map(doc => doc.classId).filter(Boolean) as string[])];
   }, [studentEnrollmentDocs]);
   
-  // Now, fetch the actual class documents using the extracted class IDs.
   const classesQuery = useMemoFirebase(() => {
     if (!firestore || enrolledClassIds.length === 0) return null;
-    // Use an 'in' query to fetch all class documents that the student is enrolled in.
     return query(collection(firestore, 'classes'), where(documentId(), 'in', enrolledClassIds));
   }, [firestore, enrolledClassIds]);
 
   const { data: classes, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
   
-  const isLoading = isLoadingEnrollments || (enrolledClassIds.length > 0 && isLoadingClasses);
+  const isLoading = isLoadingEnrollments || isLoadingClasses;
 
   return (
     <div className="space-y-4">
