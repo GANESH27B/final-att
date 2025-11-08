@@ -170,17 +170,6 @@ export default function StudentDashboardPage() {
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total Classes Attended</CardDescription>
-            <CardTitle className="text-4xl">{overallStats.totalAttended}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-                Out of {overallStats.totalClasses} total classes.
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
             <CardDescription>Lowest Attendance</CardDescription>
             <CardTitle className="text-4xl">{overallStats.lowestAttendanceSubject.percentage}%</CardTitle>
           </CardHeader>
