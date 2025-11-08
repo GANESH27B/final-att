@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { AttendanceRecord } from "@/lib/types";
@@ -23,10 +23,14 @@ export default function StudentDashboardPage() {
   );
   const { data: attendanceRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
-  const totalClasses = useMemo(() => {
-    if (!attendanceRecords) return 0;
+  const { totalClasses, avgAttendance } = useMemo(() => {
+    if (!attendanceRecords) return { totalClasses: 0, avgAttendance: 0 };
     const uniqueClassIds = new Set(attendanceRecords.map(r => r.classId));
-    return uniqueClassIds.size;
+    
+    const presentCount = attendanceRecords.filter(r => r.status === 'Present').length;
+    const average = attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
+
+    return { totalClasses: uniqueClassIds.size, avgAttendance: average };
   }, [attendanceRecords]);
 
   const isLoading = isLoadingAttendance;
@@ -44,6 +48,18 @@ export default function StudentDashboardPage() {
             {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{totalClasses}</div>}
             <p className="text-xs text-muted-foreground">
               All your subjects this semester.
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Attendance</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{avgAttendance.toFixed(1)}%</div>}
+            <p className="text-xs text-muted-foreground">
+              Across all your classes.
             </p>
           </CardContent>
         </Card>
