@@ -196,7 +196,7 @@ export default function FacultyDashboardPage() {
                                <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => value.slice(0, 6)} />
                                <YAxis domain={[0, 100]} />
                                <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                               <Bar dataKey="attendance" fill="var(--color-attendance)" radius={8} />
+                               <Bar dataKey="attendance" fill="hsl(var(--primary))" radius={8} />
                             </BarChart>
                         </ChartContainer>
                     ) : (
