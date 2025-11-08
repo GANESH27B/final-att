@@ -48,7 +48,10 @@ export default function StudentDashboardPage() {
   
   const classesQuery = useMemoFirebase(() => {
     if (!firestore || enrolledClassIds.length === 0) return null;
-    return query(collection(firestore, 'classes'), where('id', 'in', enrolledClassIds));
+    // Firestore 'in' queries are limited to 10 elements in the array.
+    // For a student who is in more than 10 classes, this will fail.
+    // A better approach for production would be to store enrollments in a separate doc.
+    return query(collection(firestore, 'classes'), where('__name__', 'in', enrolledClassIds));
   }, [firestore, enrolledClassIds]);
 
   const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(classesQuery);
@@ -64,13 +67,14 @@ export default function StudentDashboardPage() {
   const subjectWiseAttendance = useMemo(() => {
     if (!attendanceRecords || !classMap.size) return [];
 
-    const statsByClass: { [classId: string]: { attended: number, total: number } } = {};
+    const statsByClass: { [classId: string]: { attended: number, total: number, uniqueDates: Set<string> } } = {};
 
     attendanceRecords.forEach(record => {
       if (!statsByClass[record.classId]) {
-        statsByClass[record.classId] = { attended: 0, total: 0 };
+        statsByClass[record.classId] = { attended: 0, total: 0, uniqueDates: new Set() };
       }
-      statsByClass[record.classId].total++;
+      statsByClass[record.classId].total++; // this counts every record.
+      statsByClass[record.classId].uniqueDates.add(record.date);
       if (record.status === 'Present') {
         statsByClass[record.classId].attended++;
       }
@@ -78,11 +82,16 @@ export default function StudentDashboardPage() {
 
     return Object.entries(statsByClass).map(([classId, stats]) => {
       const classInfo = classMap.get(classId);
-      const percentage = stats.total > 0 ? (stats.attended / stats.total) * 100 : 0;
+      // Total classes is the number of unique attendance dates for that class.
+      const totalSessions = stats.uniqueDates.size;
+      const attendedSessions = attendanceRecords.filter(r => r.classId === classId && r.status === 'Present').length;
+      
+      const percentage = totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
+
       return {
         subject: classInfo?.name || 'Unknown Class',
-        totalClasses: stats.total,
-        attendedClasses: stats.attended,
+        totalClasses: totalSessions,
+        attendedClasses: attendedSessions,
         percentage: parseFloat(percentage.toFixed(1)),
       };
     });
@@ -146,20 +155,10 @@ export default function StudentDashboardPage() {
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold tracking-tight font-headline">Student Dashboard</h1>
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {Array.from({length: 3}).map((_, i) => (
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                {Array.from({length: 2}).map((_, i) => (
                     <Card key={i}><CardHeader className="pb-2"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-10 w-1/4 mt-1" /></CardHeader><CardContent><Skeleton className="h-3 w-3/4" /></CardContent></Card>
                 ))}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
-                    <CardHeader><CardTitle>Subject-wise Attendance</CardTitle><CardDescription>Detailed attendance record for each subject.</CardDescription></CardHeader>
-                    <CardContent><Skeleton className="h-48 w-full" /></CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle>Attendance Progress</CardTitle><CardDescription>Your attendance trend over the last few months.</CardDescription></CardHeader>
-                    <CardContent><Skeleton className="h-48 w-full" /></CardContent>
-                </Card>
             </div>
         </div>
     )
@@ -168,18 +167,7 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-4">
         <h1 className="text-2xl font-bold tracking-tight font-headline">Student Dashboard</h1>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Overall Attendance</CardDescription>
-            <CardTitle className="text-4xl">{overallStats.overallPercentage}%</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              {overallStats.overallPercentage >= 75 ? "You are on track. Keep it up!" : "Your attendance is low. Try to attend more classes."}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Classes Attended</CardDescription>
