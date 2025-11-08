@@ -261,7 +261,7 @@ export default function AttendancePage() {
         scannerRef.current = null;
       }
     };
-  }, [sessionActive, useScanner, markAttendance, toast]);
+  }, [sessionActive, useScanner, markAttendance]);
 
 
   const handleSubmitManual = () => {
@@ -279,7 +279,7 @@ export default function AttendancePage() {
         return (
              <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80 p-4 text-center">
                 <AlertTriangle className="h-12 w-12 text-muted-foreground" />
-                <p className="mt-4 text-muted-foreground">Scanner is disabled due to a camera error. Use manual entry below.</p>
+                <p className="mt-4 text-muted-foreground">Scanner is disabled. Use manual entry below.</p>
             </div>
         )
     }
@@ -471,3 +471,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
