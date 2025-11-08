@@ -169,7 +169,8 @@ export default function AttendancePage() {
     if (studentMap.has(trimmedIdentifier)) {
       student = studentMap.get(trimmedIdentifier);
     } else {
-      student = enrolledStudents?.find(s => s.registrationNumber === trimmedIdentifier);
+      const foundStudent = enrolledStudents?.find(s => s.registrationNumber === trimmedIdentifier || s.id === trimmedIdentifier);
+      student = foundStudent;
     }
 
     if (!student) {
@@ -212,10 +213,7 @@ export default function AttendancePage() {
       });
       scannerRef.current = scanner;
 
-      scanner.start(
-        { facingMode: 'environment' },
-        scannerConfig,
-        (decodedText) => {
+      const onScanSuccess = (decodedText: string) => {
           markAttendance(decodedText);
           if (scannerRef.current?.isScanning) {
             try {
@@ -223,7 +221,12 @@ export default function AttendancePage() {
               setTimeout(() => scannerRef.current?.resume(), 1500);
             } catch (e) { /* Ignore */ }
           }
-        },
+      };
+
+      scanner.start(
+        { facingMode: 'environment' },
+        scannerConfig,
+        onScanSuccess,
         (errorMessage) => { /* ignore scan errors */ }
       ).then(() => {
         setScannerState('SCANNING');
@@ -261,7 +264,7 @@ export default function AttendancePage() {
         scannerRef.current = null;
       }
     };
-  }, [sessionActive, useScanner, markAttendance]);
+  }, [sessionActive, useScanner, markAttendance, scannerState, toast]);
 
 
   const handleSubmitManual = () => {
@@ -471,5 +474,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
