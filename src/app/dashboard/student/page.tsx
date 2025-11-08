@@ -1,3 +1,4 @@
+
 "use client"
 import {
   Card,
@@ -36,14 +37,15 @@ export default function StudentDashboardPage() {
   const [dailyLog, setDailyLog] = useState<DailyLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Get all classes the student is enrolled in.
+  // 1. Get all classes the student is enrolled in by querying the 'students' collection group.
   const enrolledClassesQuery = useMemoFirebase(() =>
     firestore && user ? query(collectionGroup(firestore, 'students'), where('studentId', '==', user.uid)) : null,
     [firestore, user]
   );
-  const { data: enrolledClasses, isLoading: isLoadingEnrolled } = useCollection<Class>(enrolledClassesQuery);
+  // The documents returned are of type User, but contain the classId we need.
+  const { data: enrolledStudentRecords, isLoading: isLoadingEnrolled } = useCollection<User>(enrolledClassesQuery);
 
-  // 2. Get all personal attendance records.
+  // 2. Get all personal "Present" attendance records.
   const studentAttendanceQuery = useMemoFirebase(() => 
     firestore && user ? query(collection(firestore, `users/${user.uid}/attendance`)) : null,
     [firestore, user]
@@ -52,7 +54,7 @@ export default function StudentDashboardPage() {
 
   useEffect(() => {
     const generateFullAttendanceLog = async () => {
-      if (!firestore || !enrolledClasses || presentRecords === null) {
+      if (!firestore || !enrolledStudentRecords || presentRecords === null) {
         if (!isLoadingEnrolled && !isLoadingAttendance) {
           setIsLoading(false);
         }
@@ -61,18 +63,23 @@ export default function StudentDashboardPage() {
 
       setIsLoading(true);
 
-      // Create a map of all "Present" records for quick lookup.
+      // Create a map of all "Present" records for quick lookup. Key: "classId-date"
       const presentMap = new Map(presentRecords.map(r => `${r.classId}-${r.date}`));
 
       // Fetch all attendance sessions for the classes the student is enrolled in.
       const allClassAttendance: AttendanceRecord[] = [];
-      if (enrolledClasses.length > 0) {
-        const classIds = enrolledClasses.map(c => c.classId);
-        const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
-        const attendanceSnap = await getDocs(attendanceQuery);
-        attendanceSnap.forEach(doc => {
-          allClassAttendance.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
-        });
+      if (enrolledStudentRecords.length > 0) {
+        // Get unique class IDs from the student enrollment records
+        const classIds = [...new Set(enrolledStudentRecords.map(rec => rec.classId).filter(Boolean))];
+        
+        if (classIds.length > 0) {
+          // Query the 'attendance' collection group for any records matching these class IDs
+          const attendanceQuery = query(collectionGroup(firestore, 'attendance'), where('classId', 'in', classIds));
+          const attendanceSnap = await getDocs(attendanceQuery);
+          attendanceSnap.forEach(doc => {
+            allClassAttendance.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+          });
+        }
       }
 
       // Create a set of unique class sessions (classId + date).
@@ -103,7 +110,7 @@ export default function StudentDashboardPage() {
     };
 
     generateFullAttendanceLog();
-  }, [firestore, enrolledClasses, presentRecords, isLoadingEnrolled, isLoadingAttendance]);
+  }, [firestore, enrolledStudentRecords, presentRecords, isLoadingEnrolled, isLoadingAttendance]);
 
   
   const avgAttendance = useMemo(() => {
@@ -113,8 +120,11 @@ export default function StudentDashboardPage() {
   }, [dailyLog]);
 
   const totalEnrolledClasses = useMemo(() => {
-    return enrolledClasses?.length || 0;
-  }, [enrolledClasses]);
+    // Deduplicate based on classId
+    if (!enrolledStudentRecords) return 0;
+    const uniqueClassIds = new Set(enrolledStudentRecords.map(rec => rec.classId));
+    return uniqueClassIds.size;
+  }, [enrolledStudentRecords]);
 
   const finalIsLoading = isLoading || isLoadingEnrolled;
 
@@ -199,3 +209,5 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
+
+    
