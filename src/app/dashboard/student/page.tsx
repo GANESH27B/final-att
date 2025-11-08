@@ -18,9 +18,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Percent } from "lucide-react";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
-import { AttendanceRecord, Class } from "@/lib/types";
-import { useMemo } from "react";
+import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
+import { AttendanceRecord, Class, User } from "@/lib/types";
+import { useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 
@@ -34,6 +34,9 @@ type CombinedLog = {
 export default function StudentDashboardPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const [enrolledClasses, setEnrolledClasses] = useState<Class[]>([]);
+  const [allClassSessions, setAllClassSessions] = useState<AttendanceRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const studentAttendanceQuery = useMemoFirebase(() => 
     firestore && user ? query(collection(firestore, `users/${user.uid}/attendance`)) : null,
@@ -41,34 +44,87 @@ export default function StudentDashboardPage() {
   );
   const { data: presentRecords, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(studentAttendanceQuery);
   
-  // This query is needed to get the total number of enrolled classes, but we are not using the full data yet.
-  const enrolledClassesQuery = useMemoFirebase(() =>
-    firestore && user ? query(collection(firestore, 'classes'), where('studentIds', 'array-contains', user.uid)) : null,
-    [firestore, user]
-  );
-  const { data: enrolledClasses, isLoading: isLoadingClasses } = useCollection<Class>(enrolledClassesQuery);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!firestore || !user) {
+        setIsLoading(false);
+        return;
+      };
+      
+      setIsLoading(true);
+
+      // 1. Find all classes the user is enrolled in.
+      const enrolledClassesSnap = await getDocs(query(collectionGroup(firestore, 'students'), where('id', '==', user.uid)));
+      const enrolledClassIds = enrolledClassesSnap.docs.map(doc => doc.data().classId);
+
+      if (enrolledClassIds.length === 0) {
+        setEnrolledClasses([]);
+        setAllClassSessions([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      const classesQuery = query(collection(firestore, 'classes'), where('id', 'in', enrolledClassIds));
+      const classesSnap = await getDocs(classesQuery);
+      const fetchedClasses = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class));
+      setEnrolledClasses(fetchedClasses);
+
+      // 2. Fetch all attendance sessions for those classes.
+      const sessionPromises = fetchedClasses.map(cls => 
+        getDocs(collection(firestore, `classes/${cls.id}/attendance`))
+      );
+      const sessionSnapshots = await Promise.all(sessionPromises);
+      
+      const allSessions: AttendanceRecord[] = [];
+      sessionSnapshots.forEach(snap => {
+        snap.forEach(doc => {
+          allSessions.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+        });
+      });
+      setAllClassSessions(allSessions);
+
+      setIsLoading(false);
+    };
+
+    fetchData();
+  }, [firestore, user]);
 
   const dailyLog: CombinedLog[] = useMemo(() => {
-    if (!presentRecords) return [];
-    const log = presentRecords.map(record => ({
-      id: record.id,
-      date: record.date,
-      className: record.className || 'Unknown Class',
-      status: 'Present' as const
-    }));
-    // Sort by date descending
+    if (isLoading || !allClassSessions) return [];
+    
+    // Create a set of unique sessions (classId + date)
+    const uniqueSessions = new Map<string, { classId: string; className: string; date: string }>();
+    allClassSessions.forEach(session => {
+        const key = `${session.classId}-${session.date}`;
+        if (!uniqueSessions.has(key)) {
+            uniqueSessions.set(key, { classId: session.classId, className: session.className || 'Unknown Class', date: session.date });
+        }
+    });
+
+    const presentSet = new Set(presentRecords?.map(r => `${r.classId}-${r.date}`));
+
+    const log: CombinedLog[] = Array.from(uniqueSessions.values()).map(session => {
+        const key = `${session.classId}-${session.date}`;
+        return {
+            id: key,
+            date: session.date,
+            className: session.className,
+            status: presentSet.has(key) ? 'Present' : 'Absent',
+        };
+    });
+
     return log.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [presentRecords]);
+  }, [isLoading, allClassSessions, presentRecords]);
 
 
   const avgAttendance = useMemo(() => {
-    // This is a placeholder for now as we need total classes to calculate this.
-    // For now, we assume 100% for attended classes.
-    if (!presentRecords || presentRecords.length === 0) return 0;
-    return 100;
-  }, [presentRecords]);
+    const totalSessions = new Set(allClassSessions.map(s => `${s.classId}-${s.date}`)).size;
+    if (totalSessions === 0) return 0;
+    const presentCount = presentRecords?.length || 0;
+    return (presentCount / totalSessions) * 100;
+  }, [allClassSessions, presentRecords]);
   
-  const isLoading = isLoadingAttendance || isLoadingClasses;
+  const finalIsLoading = isLoading || isLoadingAttendance;
 
   return (
     <div className="space-y-6">
@@ -80,7 +136,7 @@ export default function StudentDashboardPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingClasses ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{enrolledClasses?.length || 0}</div>}
+            {finalIsLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{enrolledClasses?.length || 0}</div>}
             <p className="text-xs text-muted-foreground">
               All your subjects this semester.
             </p>
@@ -92,7 +148,7 @@ export default function StudentDashboardPage() {
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{avgAttendance.toFixed(1)}%</div>}
+            {finalIsLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-2xl font-bold">{avgAttendance.toFixed(1)}%</div>}
             <p className="text-xs text-muted-foreground">
               Across all your classes.
             </p>
@@ -106,7 +162,7 @@ export default function StudentDashboardPage() {
           <CardDescription>Your day-to-day attendance record for all classes.</CardDescription>
         </CardHeader>
         <CardContent>
-           {isLoading ? (
+           {finalIsLoading ? (
              <div className="space-y-2">
                <Skeleton className="h-10 w-full" />
                <Skeleton className="h-10 w-full" />
