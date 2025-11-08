@@ -4,8 +4,10 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, memoryLocalCache, persistentLocalCache, Firestore } from 'firebase/firestore'
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 let firestoreInstance: Firestore | null = null;
+let storageInstance: FirebaseStorage | null = null;
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -50,11 +52,16 @@ export function getSdks(firebaseApp: FirebaseApp) {
          }
       }
   }
+
+  if (!storageInstance) {
+    storageInstance = getStorage(firebaseApp);
+  }
   
   return {
     firebaseApp,
     auth: getAuth(firebaseApp),
-    firestore: firestoreInstance
+    firestore: firestoreInstance,
+    storage: storageInstance,
   };
 }
 

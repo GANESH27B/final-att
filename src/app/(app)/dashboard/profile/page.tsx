@@ -5,9 +5,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useAuth, useFirestore, useUser, useStorage, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   Card,
   CardContent,
@@ -27,13 +28,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Loader2, Camera } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional(),
   email: z.string().email(),
+  photo: z.instanceof(File).optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().optional(),
   confirmPassword: z.string().optional(),
@@ -62,8 +64,11 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const auth = useAuth();
   const firestore = useFirestore();
+  const storage = useStorage();
   const { user } = useUser();
   const [isPending, setIsPending] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -83,12 +88,13 @@ export default function ProfilePage() {
         name: user.displayName || "",
         email: user.email || "",
       });
+      setPreviewImage(user.photoURL);
     }
   }, [user, form]);
   
 
   const onSubmit = async (data: ProfileFormValues) => {
-    if (!user || !auth || !firestore) {
+    if (!user || !auth || !firestore || !storage) {
       toast({ variant: "destructive", title: "Error", description: "User not logged in or Firebase not initialized." });
       return;
     }
@@ -97,14 +103,21 @@ export default function ProfilePage() {
     let profileUpdated = false;
     let passwordUpdated = false;
     
-    // Create a new avatar URL on every profile update to give the user a way to change it.
-    const newAvatarUrl = `https://picsum.photos/seed/${user.uid}/${Date.now()}/40/40`;
-
-
     try {
+      let newAvatarUrl: string | null = null;
+      // Handle photo upload
+      if (data.photo) {
+          const file = data.photo;
+          const storageRef = ref(storage, `avatars/${user.uid}/${file.name}`);
+          const snapshot = await uploadBytes(storageRef, file);
+          newAvatarUrl = await getDownloadURL(snapshot.ref);
+          setPreviewImage(newAvatarUrl); // Update preview immediately
+          profileUpdated = true;
+      }
+
       // Collect updates
-      const profileUpdates: { displayName?: string, photoURL?: string } = {};
-      const firestoreUpdates: { name?: string, avatarUrl?: string } = {};
+      const profileUpdates: { displayName?: string; photoURL?: string } = {};
+      const firestoreUpdates: { name?: string; avatarUrl?: string } = {};
 
       if (data.name && user.displayName !== data.name) {
         profileUpdates.displayName = data.name;
@@ -112,13 +125,9 @@ export default function ProfilePage() {
         profileUpdated = true;
       }
       
-      // We always update the avatar to a new random one on profile save.
-      profileUpdates.photoURL = newAvatarUrl;
-      firestoreUpdates.avatarUrl = newAvatarUrl;
-      
-      // Check if there are any actual changes before marking profile as updated.
-      if (profileUpdates.displayName || profileUpdates.photoURL) {
-        profileUpdated = true;
+      if (newAvatarUrl) {
+          profileUpdates.photoURL = newAvatarUrl;
+          firestoreUpdates.avatarUrl = newAvatarUrl;
       }
 
       if (profileUpdated) {
@@ -175,6 +184,7 @@ export default function ProfilePage() {
       form.reset({
         ...form.getValues(),
         name: data.name, // Keep the new name in the form
+        photo: undefined, // Clear the file input
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
@@ -197,21 +207,45 @@ export default function ProfilePage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6">
-             <FormItem>
-                <FormLabel>Profile Photo</FormLabel>
-                <FormControl>
-                    <div className="flex items-center gap-4">
-                        <Avatar className="h-20 w-20">
-                            <AvatarImage src={user?.photoURL || undefined} alt="User avatar" />
-                            <AvatarFallback>{getFallback()}</AvatarFallback>
-                        </Avatar>
-                        <FormDescription>
-                            Your avatar is updated automatically when you save your profile.
-                        </FormDescription>
-                    </div>
-                </FormControl>
-                <FormMessage />
-            </FormItem>
+             <FormField
+                control={form.control}
+                name="photo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Profile Photo</FormLabel>
+                    <FormControl>
+                        <div className="flex items-center gap-4">
+                            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                                <Avatar className="h-20 w-20">
+                                    <AvatarImage src={previewImage || undefined} alt="User avatar" />
+                                    <AvatarFallback>{getFallback()}</AvatarFallback>
+                                </Avatar>
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Camera className="h-6 w-6 text-white"/>
+                                </div>
+                            </div>
+                            <Input 
+                                type="file" 
+                                accept="image/*"
+                                className="hidden"
+                                ref={fileInputRef}
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if(file) {
+                                        field.onChange(file);
+                                        setPreviewImage(URL.createObjectURL(file));
+                                    }
+                                }}
+                            />
+                            <FormDescription>
+                                Click the avatar to upload a new photo.
+                            </FormDescription>
+                        </div>
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                )}
+              />
 
             <FormField
               control={form.control}
